@@ -549,13 +549,31 @@
    * for the whole answer to generate and then be voiced as a single clip.
    */
   async function streamAndSpeakAnswer(parsed) {
-    const response = await fetch('/api/ask', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ question: parsed.question, raw: parsed.raw }),
-    });
+    // A safety net, not a tuning knob: the server's own LLM (6s) and TTS
+    // (10s) calls already fail over to a stored answer well inside this
+    // window on their own. This only fires if something outside either of
+    // those — a hung DB query, a dropped connection — leaves the request
+    // open with no bound at all, which would otherwise strand the UI in
+    // "thinking"/"speaking" forever with no way back except a manual tap.
+    const watchdog = new AbortController();
+    const watchdogTimer = setTimeout(() => watchdog.abort(), 25_000);
+
+    let response;
+    try {
+      response = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: parsed.question, raw: parsed.raw }),
+        signal: watchdog.signal,
+      });
+    } catch (err) {
+      clearTimeout(watchdogTimer);
+      if (err.name === 'AbortError') throw new Error('That took too long to answer. Try again?');
+      throw err;
+    }
 
     if (!response.ok) {
+      clearTimeout(watchdogTimer);
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || `Server returned ${response.status}`);
     }
@@ -563,6 +581,7 @@
     // A server without streaming support, or an error page, still answers
     // here with the old single-clip behaviour.
     if (!response.body || !/text\/event-stream/.test(response.headers.get('content-type') || '')) {
+      clearTimeout(watchdogTimer);
       const data = await response.json();
       setState('speaking', muted ? 'Muted — showing the answer' : 'Answering…');
       await speak(data.answer, data.speechToken);
@@ -603,34 +622,41 @@
       }
     };
 
-    while (true) {
-      if (answerInterrupted) {
-        await reader.cancel().catch(() => {});
-        break;
-      }
-
-      const { done: finished, value } = await reader.read();
-      if (finished) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // Tolerate CRLF as well as LF between frames — our own server writes LF,
-      // but a proxy in front of it is free to normalise line endings, and a
-      // parser that only matches \n\n would silently drop every event.
-      let match;
-      while ((match = /\r?\n\r?\n/.exec(buffer)) !== null) {
-        const frame = buffer.slice(0, match.index);
-        buffer = buffer.slice(match.index + match[0].length);
-
-        let event = 'message';
-        let payload = '';
-        for (const rawLine of frame.split(/\r?\n/)) {
-          const line = rawLine.trimEnd();
-          if (line.startsWith('event:')) event = line.slice(6).trim();
-          else if (line.startsWith('data:')) payload += line.slice(5).trim();
+    try {
+      while (true) {
+        if (answerInterrupted) {
+          await reader.cancel().catch(() => {});
+          break;
         }
-        if (payload) handle(event, JSON.parse(payload));
+
+        const { done: finished, value } = await reader.read();
+        if (finished) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Tolerate CRLF as well as LF between frames — our own server writes LF,
+        // but a proxy in front of it is free to normalise line endings, and a
+        // parser that only matches \n\n would silently drop every event.
+        let match;
+        while ((match = /\r?\n\r?\n/.exec(buffer)) !== null) {
+          const frame = buffer.slice(0, match.index);
+          buffer = buffer.slice(match.index + match[0].length);
+
+          let event = 'message';
+          let payload = '';
+          for (const rawLine of frame.split(/\r?\n/)) {
+            const line = rawLine.trimEnd();
+            if (line.startsWith('event:')) event = line.slice(6).trim();
+            else if (line.startsWith('data:')) payload += line.slice(5).trim();
+          }
+          if (payload) handle(event, JSON.parse(payload));
+        }
       }
+    } catch (err) {
+      if (err.name === 'AbortError') throw new Error('That took too long to answer. Try again?');
+      throw err;
+    } finally {
+      clearTimeout(watchdogTimer);
     }
 
     await chunkChain.catch(() => {}); // let every already-queued chunk resolve (or no-op) first
