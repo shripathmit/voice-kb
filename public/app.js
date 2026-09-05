@@ -146,6 +146,8 @@
     // getUserMedia stream itself is owned here and must be stopped
     // separately, or the browser's mic-in-use indicator never clears.
     if (prev === 'listening' && next !== 'listening') stopMicVisualizer();
+    if (next === 'speaking' && prev !== 'speaking') startBargeInMonitor();
+    if (prev === 'speaking' && next !== 'speaking') stopBargeInMonitor();
   }
 
   /**
@@ -177,6 +179,103 @@
       micStream = null;
     }
     if (window.Orb) Orb.detachMic();
+  }
+
+  /* ---------------- barge-in ---------------- */
+
+  // A third, independent getUserMedia stream (separate from the listening
+  // mic and the orb's visualizer) that only watches for volume, never
+  // transcribes. It runs while an answer is playing so a visitor can start
+  // talking over it and be heard, the way an actual conversation works,
+  // instead of needing to tap the mic first. Kept separate from the orb's
+  // own analyser graph so it does not fight the playback visualizer for the
+  // same levelSource.
+  let bargeInStream = null;
+  let bargeInAnalyser = null;
+  let bargeInData = null;
+  let bargeInRaf = null;
+  let bargeInAboveSince = null;
+
+  // A single loud frame does not count — a cough, a tap sound, or echo the
+  // browser's own cancellation missed could trigger a false interrupt mid-
+  // sentence. Requiring the level to stay above threshold for this long
+  // filters those out while still feeling immediate for real speech. Real
+  // device testing (mic/speaker distance, browser AEC quality) is the only
+  // way to tune these two constants — this sandbox has no real microphone
+  // to verify against.
+  const BARGE_IN_THRESHOLD = 0.14;
+  const BARGE_IN_HOLD_MS = 320;
+
+  async function startBargeInMonitor() {
+    if (!conversationMode || !SpeechRecognition || bargeInStream) return;
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch {
+      // No mic access for this purpose — barge-in just never fires; a tap
+      // still interrupts the answer same as before.
+      return;
+    }
+    if (state !== 'speaking' || !window.Orb) {
+      // The answer finished (or was interrupted some other way) before the
+      // permission prompt resolved.
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+
+    const audioCtx = Orb.ensureContext();
+    if (!audioCtx) {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+
+    bargeInStream = stream;
+    const source = audioCtx.createMediaStreamSource(bargeInStream);
+    bargeInAnalyser = audioCtx.createAnalyser();
+    bargeInAnalyser.fftSize = 256;
+    bargeInAnalyser.smoothingTimeConstant = 0.6;
+    source.connect(bargeInAnalyser);
+    bargeInData = new Uint8Array(bargeInAnalyser.frequencyBinCount);
+    bargeInAboveSince = null;
+
+    const tick = () => {
+      if (!bargeInAnalyser) return; // stopBargeInMonitor() already ran
+      bargeInAnalyser.getByteFrequencyData(bargeInData);
+      let sum = 0;
+      for (let i = 0; i < bargeInData.length; i += 1) sum += bargeInData[i];
+      const level = Math.min(1, sum / bargeInData.length / 70);
+
+      if (level >= BARGE_IN_THRESHOLD) {
+        if (bargeInAboveSince === null) {
+          bargeInAboveSince = performance.now();
+        } else if (performance.now() - bargeInAboveSince >= BARGE_IN_HOLD_MS) {
+          stopBargeInMonitor();
+          // The visitor is already mid-sentence by the time this fires —
+          // open the real mic immediately rather than after the usual
+          // pause, or the start of what they are saying gets clipped.
+          interruptSpeaking({ listenImmediately: true });
+          return;
+        }
+      } else {
+        bargeInAboveSince = null;
+      }
+      bargeInRaf = requestAnimationFrame(tick);
+    };
+    bargeInRaf = requestAnimationFrame(tick);
+  }
+
+  function stopBargeInMonitor() {
+    if (bargeInRaf) cancelAnimationFrame(bargeInRaf);
+    bargeInRaf = null;
+    bargeInAnalyser = null;
+    bargeInData = null;
+    bargeInAboveSince = null;
+    if (bargeInStream) {
+      bargeInStream.getTracks().forEach((t) => t.stop());
+      bargeInStream = null;
+    }
   }
 
   function setStatus(message, isError = false) {
@@ -951,6 +1050,26 @@
     }, 450);
   }
 
+  /**
+   * Stops the current answer and returns to idle, ready for the next
+   * question. Shared by the manual "tap to interrupt" gesture and by
+   * automatic barge-in detection (see startBargeInMonitor) — they differ
+   * only in how soon the mic reopens afterward.
+   */
+  function interruptSpeaking({ listenImmediately = false } = {}) {
+    stopSpeaking();
+    stopTypewriter(true);
+    setState('idle', conversationMode ? 'Hands-free — listening for your next question…' : 'Tap to speak');
+    if (listenImmediately) {
+      // The visitor was already mid-sentence when this fired — every extra
+      // millisecond before the mic opens is a word of theirs not captured,
+      // unlike the deliberate pause maybeAutoListen() adds after a tap.
+      if (conversationMode && SpeechRecognition) startListening();
+    } else {
+      maybeAutoListen();
+    }
+  }
+
   /* ---------------- interactions ---------------- */
 
   el.mic.addEventListener('click', () => {
@@ -968,12 +1087,9 @@
       return;
     }
     if (state === 'speaking') {
-      stopSpeaking();
-      stopTypewriter(true);
-      setState('idle', conversationMode ? 'Hands-free — listening for your next question…' : 'Tap to speak');
       // Interrupting to talk over the answer reads as wanting to ask the
       // next thing right away, so hands-free mode (once armed) keeps going.
-      maybeAutoListen();
+      interruptSpeaking();
       return;
     }
     if (state === 'thinking') return;
