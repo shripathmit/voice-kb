@@ -103,7 +103,7 @@
 
   let sharedCtx = null;
   let micTeardown = null;
-  let playbackEl = null;
+  let playbackJoin = null;
   let playbackAnalyser = null;
   let playbackData = null;
 
@@ -195,45 +195,36 @@
   }
 
   /**
-   * Wires the orb to an <audio> element's actual output, so the visual pulse
-   * matches the real waveform of the spoken answer.
+   * The join point for played-back answer audio: a standing GainNode wired
+   * once to an analyser (for the orb's visual pulse and getPlaybackLevel())
+   * and to the speakers. Answer audio arrives as a stream of short-lived
+   * AudioBufferSourceNodes (one per PCM frame from the server, scheduled
+   * back-to-back for gapless playback — see app.js) rather than one
+   * <audio> element, so there is no single persistent source node to wire
+   * up the way attachPlayback() on an <audio> element used to; every node
+   * the caller creates for a frame should `.connect()` here instead.
    *
-   * The Web Audio API allows `createMediaElementSource` exactly once per
-   * element for its whole lifetime — calling it twice throws. app.js reuses
-   * one shared <audio> element across every answer (autoplay unlocks on
-   * strict mobile browsers don't reliably transfer to a different element
-   * created later), so this only actually builds the graph the first time;
-   * every subsequent call just re-points the level source at the same
-   * already-wired analyser.
-   *
-   * Returns true on success, false if the browser refused (in which case the
-   * caller should fall back to a synthetic pulse instead).
+   * Returns null if the browser refused to create an AudioContext (in which
+   * case the caller should fall back to a synthetic pulse instead).
    */
-  function attachPlayback(audioEl) {
-    try {
-      const audioCtx = ensureContext();
-      if (!audioCtx) return false;
+  function ensurePlaybackGraph() {
+    const audioCtx = ensureContext();
+    if (!audioCtx) return null;
 
-      if (playbackEl !== audioEl) {
-        playbackAnalyser = audioCtx.createAnalyser();
-        playbackAnalyser.fftSize = 256;
-        playbackAnalyser.smoothingTimeConstant = 0.78;
-        const source = audioCtx.createMediaElementSource(audioEl);
-        source.connect(playbackAnalyser);
-        // Still has to reach the speakers — tapping it for visualisation
-        // must not silence the answer.
-        source.connect(audioCtx.destination);
-        playbackData = new Uint8Array(playbackAnalyser.frequencyBinCount);
-        playbackEl = audioEl;
-      }
-
-      levelSource = levelFromAnalyser(playbackAnalyser, playbackData);
-      return true;
-    } catch {
-      playbackEl = null;
-      playbackAnalyser = null;
-      return false;
+    if (!playbackJoin) {
+      playbackJoin = audioCtx.createGain();
+      playbackAnalyser = audioCtx.createAnalyser();
+      playbackAnalyser.fftSize = 256;
+      playbackAnalyser.smoothingTimeConstant = 0.78;
+      playbackJoin.connect(playbackAnalyser);
+      // Still has to reach the speakers — tapping it for visualisation must
+      // not silence the answer.
+      playbackJoin.connect(audioCtx.destination);
+      playbackData = new Uint8Array(playbackAnalyser.frequencyBinCount);
     }
+
+    levelSource = levelFromAnalyser(playbackAnalyser, playbackData);
+    return playbackJoin;
   }
 
   /**
@@ -289,15 +280,15 @@
       useThinkingLevel();
     }
     // 'listening' and 'speaking' set their level source explicitly via
-    // attachMic / attachPlayback / useSyntheticPulse from app.js, since only
-    // the caller knows which audio path is actually active.
+    // attachMic / ensurePlaybackGraph / useSyntheticPulse from app.js, since
+    // only the caller knows which audio path is actually active.
   }
 
   window.Orb = {
     setMode,
     attachMic,
     detachMic,
-    attachPlayback,
+    ensurePlaybackGraph,
     detachPlayback,
     useSyntheticPulse,
     ensureContext,

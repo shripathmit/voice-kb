@@ -11,6 +11,12 @@ const path = require('node:path');
 const { KnowledgeBase, normalise } = require('./lib/retrieve');
 const db = require('./lib/db');
 const tts = require('./lib/tts');
+// Only for pcmToWav() — assembling a finished streamed chunk into the WAV
+// shape the audio cache stores. The rest of the ask pipeline goes through
+// lib/tts's provider-agnostic surface; this one helper is Gemini-specific
+// because Gemini is the only provider synthesiseChunkAudioStream ever
+// streams PCM frames from (see tts.supportsStreaming()).
+const gemini = require('./lib/tts/gemini');
 const llm = require('./lib/llm');
 const seeder = require('./lib/seed');
 
@@ -349,13 +355,79 @@ function createIncrementalChunker(onChunkReady) {
 }
 
 /**
- * Synthesises one chunk's audio, checking the cache first — the same logic
- * `/api/speak` uses, factored out so the ask pipeline can call it per chunk.
- * Returns null when no provider is configured; the client falls back to its
- * own browser voice for that chunk rather than the answer going silent.
+ * Reads PCM + format straight out of a cached WAV, so a cache hit can be
+ * handed to the same per-frame pipeline a fresh streamed synthesis uses —
+ * one frame instead of many, but the same shape either way. Assumes the
+ * canonical 44-byte header layout gemini.js's own wavHeader() always
+ * writes, which is safe here since this only ever reads WAVs this server
+ * itself produced and cached.
  */
-async function synthesiseChunkAudio(text) {
-  if (!tts.isConfigured()) return null;
+function parseWavBuffer(buffer) {
+  if (buffer.length < 44) return null;
+  return {
+    pcm: buffer.subarray(44),
+    channels: buffer.readUInt16LE(22),
+    sampleRate: buffer.readUInt32LE(24),
+    bitsPerSample: buffer.readUInt16LE(34),
+  };
+}
+
+/**
+ * Starts pulling from `producer` immediately and buffers whatever it yields
+ * until a consumer is ready to read it — an async generator's body does not
+ * otherwise run at all until something calls `.next()` on it, which would
+ * defeat the entire point of kicking a chunk's synthesis off early while a
+ * later chunk (or the rest of the LLM answer) is still being worked on.
+ */
+function eagerChannel(producer) {
+  const buffered = [];
+  const waiters = [];
+  let done = false;
+  let error = null;
+
+  (async () => {
+    try {
+      for await (const item of producer) {
+        if (waiters.length) waiters.shift().resolve({ value: item, done: false });
+        else buffered.push(item);
+      }
+    } catch (err) {
+      error = err;
+      while (waiters.length) waiters.shift().reject(err);
+    } finally {
+      done = true;
+      while (waiters.length) waiters.shift().resolve({ value: undefined, done: true });
+    }
+  })();
+
+  return {
+    next() {
+      if (buffered.length) return Promise.resolve({ value: buffered.shift(), done: false });
+      if (done) return error ? Promise.reject(error) : Promise.resolve({ value: undefined, done: true });
+      return new Promise((resolve, reject) => waiters.push({ resolve, reject }));
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+}
+
+/**
+ * Streams one chunk's audio frame by frame, checking the cache first — the
+ * same lookup `/api/speak` does, but relaying each frame as it is produced
+ * instead of waiting for the whole clip and returning it as one blob. That
+ * buffer-then-return shape was throwing away most of the point of streaming
+ * synthesis in the first place: the caller (and the listener) never saw a
+ * single byte of audio any sooner than if the call had not streamed at all.
+ *
+ * Yields nothing (an empty stream) when no provider is configured, the
+ * active provider cannot stream, or synthesis fails outright — the caller
+ * treats a chunk with zero frames exactly like today's `null`: falls back
+ * to the browser's own voice for that one chunk rather than the whole
+ * answer going silent.
+ */
+async function* synthesiseChunkAudioStream(text) {
+  if (!tts.isConfigured()) return;
 
   const cfg = tts.config();
   const hash = tts.cacheKey(text, cfg);
@@ -363,39 +435,52 @@ async function synthesiseChunkAudio(text) {
   try {
     const cached = await db.getCachedAudio(hash);
     if (cached) {
-      return { audioBase64: cached.audio.toString('base64'), mimeType: cached.mime_type || 'audio/mpeg', alignment: cached.alignment };
+      const parsed = parseWavBuffer(cached.audio);
+      if (parsed) yield parsed;
+      return;
     }
   } catch (err) {
     console.error(`[tts] cache read failed: ${err.message}`);
   }
 
-  try {
-    const spoken = await tts.synthesise(text);
-    db.putCachedAudio({
-      hash,
-      provider: spoken.provider,
-      voiceId: spoken.voiceId,
-      modelId: spoken.modelId,
-      mimeType: spoken.mimeType,
-      text,
-      audio: spoken.audio,
-      alignment: spoken.alignment,
-    }).catch((err) => console.error(`[tts] cache write failed: ${err.message}`));
+  if (!tts.supportsStreaming()) return; // e.g. ElevenLabs active — no incremental delivery to relay
 
-    return { audioBase64: spoken.audio.toString('base64'), mimeType: spoken.mimeType, alignment: spoken.alignment };
+  const pcmParts = [];
+  let format = null;
+  let provider = null;
+  let voiceId = null;
+  let modelId = null;
+
+  try {
+    for await (const frame of tts.synthesiseStream(text)) {
+      pcmParts.push(frame.pcm);
+      format = { sampleRate: frame.sampleRate, channels: frame.channels, bitsPerSample: frame.bitsPerSample };
+      provider = frame.provider;
+      voiceId = frame.voiceId;
+      modelId = frame.modelId;
+      yield frame;
+    }
   } catch (err) {
     // One chunk failing to synthesise should not cost the listener the rest
-    // of the answer — that chunk just arrives text-only and the client reads
-    // it with the browser voice instead.
+    // of the answer. Whatever already streamed to the client before the
+    // failure stays valid audio; this just stops sending more for this
+    // chunk, same as a synthesis failure always has.
     console.error(`[tts] chunk synthesis ${err.code || 'ERROR'}: ${err.message}`);
-    return null;
+    return;
+  }
+
+  if (pcmParts.length && format) {
+    const wav = gemini.pcmToWav(Buffer.concat(pcmParts), format);
+    db.putCachedAudio({ hash, provider, voiceId, modelId, mimeType: 'audio/wav', text, audio: wav, alignment: null }).catch((err) =>
+      console.error(`[tts] cache write failed: ${err.message}`),
+    );
   }
 }
 
 /**
  * Produces the answer to a question, plus (when `synthesiseAudio` is true)
- * the exact per-sentence chunk list — text and an already-in-flight TTS
- * promise for each — that the caller should send on. Building that list
+ * the exact per-sentence chunk list — text and an already-running audio
+ * stream for each (see eagerChannel) — that the caller should send on. Building that list
  * here rather than handing back plain text for the caller to re-chunk keeps
  * one single source of truth: the text a chunk's audio was synthesised from
  * is always the literal text the client is later told to display for it.
@@ -430,7 +515,7 @@ async function resolveAnswer({ question, kb, synthesiseAudio = true }) {
   const chunksFromText = (text) =>
     splitIntoSpeechChunks(text).map((t) => ({
       text: t,
-      synthPromise: synthesiseAudio ? synthesiseChunkAudio(t) : null,
+      audioStream: synthesiseAudio ? eagerChannel(synthesiseChunkAudioStream(t)) : null,
     }));
 
   if (!llm.isConfigured()) {
@@ -466,7 +551,11 @@ async function resolveAnswer({ question, kb, synthesiseAudio = true }) {
 
   const readyChunks = [];
   const chunker = createIncrementalChunker((text) => {
-    readyChunks.push({ text, synthPromise: synthesiseAudio ? synthesiseChunkAudio(text) : null });
+    // eagerChannel starts pulling from Gemini right here, the moment this
+    // sentence is confirmed complete — not whenever handleAsk later gets
+    // around to awaiting it, which might be seconds from now if this is an
+    // early sentence and the LLM is still generating the rest of the answer.
+    readyChunks.push({ text, audioStream: synthesiseAudio ? eagerChannel(synthesiseChunkAudioStream(text)) : null });
   });
 
   try {
@@ -553,18 +642,40 @@ async function handleAsk({ res, question, raw, kb, stream }) {
 
   finishAsk({ question, raw, result, started });
 
+  // Sent, and consumed by the client, strictly in chunk order (chunk 1's
+  // frames are never interleaved with chunk 0's) — but within a chunk, its
+  // frames are relayed the instant each one arrives from Gemini rather than
+  // buffered until the whole clip is done. That is the actual latency win:
+  // the client can start playing chunk 0 within roughly one round-trip of
+  // its synthesis beginning, not after every frame of it has arrived.
   for (let i = 0; i < result.chunks.length; i += 1) {
-    const { text, synthPromise } = result.chunks[i];
-    const spoken = await synthPromise;
-    sseSend(res, 'chunk', {
-      index: i,
-      isLast: i === result.chunks.length - 1,
-      text,
-      speechToken: signText(text),
-      audioBase64: spoken ? spoken.audioBase64 : null,
-      mimeType: spoken ? spoken.mimeType : null,
-      alignment: spoken ? spoken.alignment : null,
-    });
+    const { text, audioStream } = result.chunks[i];
+    const isLast = i === result.chunks.length - 1;
+    sseSend(res, 'chunk-start', { index: i, isLast, text, speechToken: signText(text) });
+
+    let hadAudio = false;
+    if (audioStream) {
+      try {
+        for await (const frame of audioStream) {
+          hadAudio = true;
+          sseSend(res, 'audio-frame', {
+            index: i,
+            pcmBase64: frame.pcm.toString('base64'),
+            sampleRate: frame.sampleRate,
+            channels: frame.channels,
+            bitsPerSample: frame.bitsPerSample,
+          });
+        }
+      } catch (err) {
+        console.error(`[tts] chunk ${i} stream failed: ${err.message}`);
+      }
+    }
+
+    // hadAudio: false tells the client this chunk got no server audio at
+    // all (no provider configured, provider can't stream, or synthesis
+    // failed outright) — same signal `audioBase64: null` used to carry —
+    // so it falls back to browser speech for just this one chunk.
+    sseSend(res, 'chunk-end', { index: i, hadAudio });
   }
 
   sseSend(res, 'done', {

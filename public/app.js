@@ -65,17 +65,25 @@
   let micStream = null;
   let audioUnlocked = false;
   let playbackAudio = null;
+  // Server-voice playback plays a live stream of short PCM frames scheduled
+  // back-to-back on the Web Audio timeline (see scheduleFrame), not one
+  // <audio> element per chunk. scheduledSources is every node currently
+  // playing or queued, so stopSpeaking() can silence them all immediately.
+  // nextStartTime is the single continuous cursor for where the next frame
+  // — from any chunk — should begin; 0 means "not yet started."
+  let scheduledSources = [];
+  let nextStartTime = 0;
 
   /**
-   * The single <audio> element every server-voice answer plays through.
+   * The single <audio> element used for the legacy non-streaming JSON
+   * fallback path (see speakWithServer) and as the autoplay-unlock target
+   * in unlockAudio() — the actual server-voice playback path used for real
+   * answers no longer plays through an <audio> element at all (see
+   * scheduleFrame), so this only matters for those two secondary uses now.
    *
-   * Reused rather than a fresh `new Audio()` per answer for two reasons: an
-   * autoplay unlock granted to one element instance does not reliably carry
-   * to a different one created later on strict mobile browsers, and the Web
-   * Audio API only allows `createMediaElementSource` to be called once per
-   * element — reusing one element is what lets the orb's playback analyser
-   * (see Orb.attachPlayback) stay wired across every answer instead of
-   * throwing on the second one.
+   * Reused rather than a fresh `new Audio()` per answer: an autoplay unlock
+   * granted to one element instance does not reliably carry to a different
+   * one created later on strict mobile browsers.
    */
   function getPlaybackAudio() {
     if (!playbackAudio) {
@@ -493,10 +501,11 @@
               });
             }
 
-            // Real audio to react to when the browser allows tapping the
-            // element; a synthetic pulse when it doesn't (some browsers
-            // restrict this outside a fresh gesture) so the orb still moves.
-            if (window.Orb && !Orb.attachPlayback(audio)) Orb.useSyntheticPulse(0.26, 0.09);
+            // This legacy path plays through an <audio> element, which the
+            // orb's Web-Audio-based playback graph has no way to read a
+            // waveform from — a synthetic pulse instead, same as the
+            // browser-speech fallback gets.
+            if (window.Orb) Orb.useSyntheticPulse(0.26, 0.09);
 
             audio.play().catch((err) => done(err));
           },
@@ -516,6 +525,100 @@
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return new Blob([bytes], { type: mimeType });
+  }
+
+  function base64ToBytes(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  /**
+   * A small async push queue: the SSE handler `push()`es audio-frame events
+   * onto it the moment they arrive over the wire, and playChunkWithServer
+   * consumes them with `for await`. Needed because production (SSE events
+   * arriving) and consumption (this chunk's turn in chunkChain) are not the
+   * same thing — frames often arrive well before this chunk is actually up
+   * to play, so they have to be buffered rather than dropped or awaited
+   * synchronously.
+   */
+  function createFrameChannel() {
+    const queue = [];
+    let waiter = null;
+    let ended = false;
+    return {
+      push(item) {
+        if (waiter) {
+          const resolve = waiter;
+          waiter = null;
+          resolve({ value: item, done: false });
+        } else {
+          queue.push(item);
+        }
+      },
+      end() {
+        if (ended) return;
+        ended = true;
+        if (waiter) {
+          const resolve = waiter;
+          waiter = null;
+          resolve({ value: undefined, done: true });
+        }
+      },
+      next() {
+        if (queue.length) return Promise.resolve({ value: queue.shift(), done: false });
+        if (ended) return Promise.resolve({ value: undefined, done: true });
+        return new Promise((resolve) => {
+          waiter = resolve;
+        });
+      },
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+  }
+
+  /**
+   * Decodes one 16-bit PCM frame (the only format Gemini's TTS has ever
+   * been observed to return — see lib/tts/gemini.js parseAudioFormat) and
+   * schedules it to start playing immediately after whatever was scheduled
+   * before it. `nextStartTime` is one continuous cursor across the whole
+   * answer, not per chunk, so a chunk boundary produces no gap either —
+   * chunk 2's first frame picks up exactly where chunk 1's last one ended.
+   *
+   * Returns the frame's own start time and duration (both in AudioContext
+   * clock seconds) so the caller can track a chunk's own playback window
+   * for its typewriter sync, separately from the shared global cursor.
+   */
+  function scheduleFrame(audioCtx, joinNode, frame) {
+    const bytes = base64ToBytes(frame.pcmBase64);
+    const bytesPerSample = frame.bitsPerSample / 8;
+    const sampleCount = Math.floor(bytes.length / bytesPerSample / frame.channels);
+    const buffer = audioCtx.createBuffer(frame.channels, sampleCount, frame.sampleRate);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+    for (let ch = 0; ch < frame.channels; ch += 1) {
+      const channelData = buffer.getChannelData(ch);
+      for (let i = 0; i < sampleCount; i += 1) {
+        channelData[i] = view.getInt16((i * frame.channels + ch) * bytesPerSample, true) / 32768;
+      }
+    }
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(joinNode);
+
+    const startAt = Math.max(nextStartTime, audioCtx.currentTime);
+    source.start(startAt);
+    nextStartTime = startAt + buffer.duration;
+
+    scheduledSources.push(source);
+    source.onended = () => {
+      scheduledSources = scheduledSources.filter((s) => s !== source);
+    };
+
+    return { startAt, duration: buffer.duration };
   }
 
   /** ElevenLabs alignment → a flat array of per-character end times in seconds. */
@@ -590,6 +693,17 @@
       currentAudio.currentTime = 0;
       currentAudio = null;
     }
+    // answerInterrupted stops NEW frames being scheduled, but does nothing
+    // for ones already handed to AudioBufferSourceNode.start() — those keep
+    // playing on their own schedule unless stopped explicitly.
+    for (const source of scheduledSources) {
+      try {
+        source.stop();
+      } catch {
+        /* already ended */
+      }
+    }
+    scheduledSources = [];
   }
 
   function pickVoice() {
@@ -710,15 +824,29 @@
     let doneData = null;
     let streamError = null;
 
-    // Each chunk's playback is chained after the previous one, so even if
-    // several `chunk` events arrive in a burst (the server can synthesise
-    // faster than one chunk plays), they still play strictly in order.
+    // A fresh answer's audio schedules from "now," not wherever a previous
+    // answer's playback cursor was left.
+    nextStartTime = 0;
+    scheduledSources = [];
+
+    // Each chunk's playback is chained after the previous one, so even
+    // though a later chunk's frames can (and often do) arrive well before
+    // an earlier chunk has finished playing — resolveAnswer kicks every
+    // chunk's synthesis off in parallel server-side — they still get
+    // scheduled and displayed strictly in order.
     let revealedPrefix = '';
     let chunkChain = Promise.resolve();
     let sawFirstChunk = false;
+    // One frame channel per chunk index, live only for the duration of this
+    // answer: 'audio-frame' events push into it, playChunkWithServer reads
+    // from it whenever this chunk's turn in chunkChain actually comes up —
+    // which may be well after the frames themselves arrived.
+    const channels = new Map();
 
     const handle = (event, data) => {
-      if (event === 'chunk') {
+      if (event === 'chunk-start') {
+        const channel = createFrameChannel();
+        channels.set(data.index, channel);
         if (!sawFirstChunk) {
           sawFirstChunk = true;
           setState('speaking', muted ? 'Muted — showing the answer' : 'Answering…');
@@ -727,9 +855,15 @@
           // Already-queued chunks must not start playing after the listener
           // interrupted an earlier one — a promise chain has no native cancel.
           if (answerInterrupted) return;
-          await playChunk(data, revealedPrefix);
+          await playChunk({ text: data.text, channel }, revealedPrefix);
           revealedPrefix += data.text + ' ';
         });
+      } else if (event === 'audio-frame') {
+        const channel = channels.get(data.index);
+        if (channel) channel.push(data);
+      } else if (event === 'chunk-end') {
+        const channel = channels.get(data.index);
+        if (channel) channel.end();
       } else if (event === 'done') {
         doneData = data;
       } else if (event === 'error') {
@@ -772,6 +906,10 @@
       throw err;
     } finally {
       clearTimeout(watchdogTimer);
+      // Whatever happened — clean finish, an interruption, or the read loop
+      // breaking on an error — no channel should be left with a consumer
+      // awaiting a frame that is now never going to arrive.
+      for (const channel of channels.values()) channel.end();
     }
 
     await chunkChain.catch(() => {}); // let every already-queued chunk resolve (or no-op) first
@@ -805,7 +943,7 @@
       return;
     }
 
-    if (voiceProvider === 'server' && chunk.audioBase64) {
+    if (voiceProvider === 'server') {
       try {
         await playChunkWithServer(chunk, prefix, displayText);
         return;
@@ -817,60 +955,66 @@
     await playChunkWithBrowser(chunk, prefix, displayText);
   }
 
-  /** Fetches this chunk's audio from base64, plays it, and syncs the typewriter to it. */
+  /**
+   * Consumes this chunk's streamed PCM frames as they arrive on its
+   * channel, scheduling each one immediately (gaplessly, after whatever
+   * came before it) instead of waiting for the whole chunk's audio before
+   * playing any of it — the actual point of a streaming TTS call, which the
+   * previous "buffer the full chunk, then send one blob" design was
+   * throwing away.
+   *
+   * Throws if not a single frame ever arrived (no provider configured, the
+   * active provider cannot stream, or synthesis failed outright), so the
+   * caller's existing try/catch falls back to browser speech for this one
+   * chunk exactly as it always has.
+   */
   async function playChunkWithServer(chunk, prefix, displayText) {
-    const blob = base64ToBlob(chunk.audioBase64, chunk.mimeType || 'audio/mpeg');
-    const url = URL.createObjectURL(blob);
+    const audioCtx = window.Orb ? Orb.ensureContext() : null;
+    const joinNode = window.Orb ? Orb.ensurePlaybackGraph() : null;
+    if (!audioCtx || !joinNode) throw new Error('Web Audio unavailable');
 
-    const audio = getPlaybackAudio();
-    audio.src = url;
-    currentAudio = audio;
+    let chunkStartTime = null; // this chunk's own first-frame start, in audioCtx clock seconds
+    let chunkDuration = 0; // sum of durations of frames scheduled so far for this chunk
+    let gotAnyFrame = false;
+    const estimatedTotalSec = estimateDuration(chunk.text) / 1000;
 
-    const timings = alignmentEndTimes(chunk.alignment);
+    for await (const frame of chunk.channel) {
+      if (answerInterrupted) break;
+      const wasFirstFrame = !gotAnyFrame;
+      gotAnyFrame = true;
 
-    try {
-      await new Promise((resolve, reject) => {
-        let settled = false;
-        const done = (err) => {
-          if (settled) return;
-          settled = true;
-          err ? reject(err) : resolve();
-        };
+      const { startAt, duration } = scheduleFrame(audioCtx, joinNode, frame);
+      if (chunkStartTime === null) chunkStartTime = startAt;
+      chunkDuration += duration;
 
-        audio.addEventListener('error', () => done(new Error('audio playback failed')), { once: true });
-        audio.addEventListener('ended', () => done(), { once: true });
-        // Interrupting (mic tap, mute) pauses rather than ending, and a paused
-        // element fires no 'ended' — without this the await would never settle.
-        audio.addEventListener('pause', () => done(), { once: true });
-
-        audio.addEventListener(
-          'loadedmetadata',
-          () => {
-            const durationMs = Number.isFinite(audio.duration) ? audio.duration * 1000 : estimateDuration(chunk.text);
-
-            startTypewriter(displayText, {
-              estimatedMs: durationMs,
-              chars: () => {
-                if (!audio.currentTime && audio.paused) return null;
-                if (timings) return prefix.length + charsSpokenAt(timings, audio.currentTime);
-                if (!Number.isFinite(audio.duration) || audio.duration === 0) return null;
-                return prefix.length + Math.floor((audio.currentTime / audio.duration) * chunk.text.length);
-              },
-            });
-
-            if (window.Orb && !Orb.attachPlayback(audio)) Orb.useSyntheticPulse(0.26, 0.09);
-
-            audio.play().catch((err) => done(err));
+      if (wasFirstFrame) {
+        startTypewriter(displayText, {
+          estimatedMs: Math.max(estimatedTotalSec, chunkDuration) * 1000,
+          chars: () => {
+            const elapsed = audioCtx.currentTime - chunkStartTime;
+            if (elapsed <= 0) return null; // queued behind an earlier chunk, not audible yet
+            // More frames may still be arriving, so the true total duration
+            // is not known until chunk-end fires — use whichever of the
+            // text-length estimate, what has arrived so far, or elapsed
+            // time itself is largest, so the ratio never wrongly reports
+            // 100% before the audio has actually finished.
+            const knownTotal = Math.max(estimatedTotalSec, chunkDuration, elapsed);
+            return prefix.length + Math.min(chunk.text.length, Math.floor((elapsed / knownTotal) * chunk.text.length));
           },
-          { once: true },
-        );
-
-        audio.load();
-      });
-    } finally {
-      URL.revokeObjectURL(url);
-      if (currentAudio === audio) currentAudio = null;
+        });
+      }
     }
+
+    if (!gotAnyFrame) throw new Error('no audio frames received');
+    if (answerInterrupted) return;
+
+    // The frames are all scheduled, but likely still playing — nextStartTime
+    // is this chunk's own end time (chunk n+1 has not scheduled anything
+    // yet, since it is still waiting its turn in chunkChain), so waiting
+    // until the clock reaches it is waiting for this chunk to actually
+    // finish being heard before the caller moves on to the next one.
+    const remainingMs = Math.max(0, nextStartTime - audioCtx.currentTime) * 1000;
+    await new Promise((resolve) => setTimeout(resolve, remainingMs));
   }
 
   /** speechSynthesis fallback for one chunk, syncing the typewriter via boundary events. */
