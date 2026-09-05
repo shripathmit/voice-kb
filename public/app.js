@@ -682,20 +682,32 @@
   // chain has no native "cancel" — without this flag, chunks already queued
   // via `.then()` at the moment of interruption would keep playing one after
   // another in the background even though the UI has already moved on.
-  let answerInterrupted = false;
+  // A boolean here was a real bug: `ask()` reset it to false at the start of
+  // every new question, including while a PREVIOUS, interrupted answer's
+  // async work (its SSE reader, its chunkChain, playChunkWithServer's
+  // frame loop) had not actually finished unwinding yet — network reads and
+  // channel waits do not settle instantly. That stale work would see the
+  // flag flip back to false and resume scheduling its own audio frames
+  // right on top of the new answer's, both writing to the same
+  // nextStartTime cursor: the old conversation "still trying to finish".
+  // A monotonic counter has no such collision — every answer captures its
+  // own generation number once, and it can never coincidentally equal a
+  // later answer's.
+  let activeGeneration = 0;
 
   /** Silences whichever voice is currently talking, and stops any queued chunks. */
   function stopSpeaking() {
-    answerInterrupted = true;
+    activeGeneration += 1; // invalidates any in-flight answer, whatever generation it was
     if (synth) synth.cancel();
     if (currentAudio) {
       currentAudio.pause();
       currentAudio.currentTime = 0;
       currentAudio = null;
     }
-    // answerInterrupted stops NEW frames being scheduled, but does nothing
-    // for ones already handed to AudioBufferSourceNode.start() — those keep
-    // playing on their own schedule unless stopped explicitly.
+    // Stopping being the current generation stops NEW frames being
+    // scheduled, but does nothing for ones already handed to
+    // AudioBufferSourceNode.start() — those keep playing on their own
+    // schedule unless stopped explicitly.
     for (const source of scheduledSources) {
       try {
         source.stop();
@@ -723,7 +735,9 @@
   /* ---------------- backend ---------------- */
 
   async function ask(parsed) {
-    answerInterrupted = false;
+    // Captured once, compared for the rest of this call's life — see
+    // activeGeneration above for why this can't be a shared boolean.
+    const myGeneration = ++activeGeneration;
     setState('thinking', 'Searching the knowledge base…');
     el.liveTranscript.textContent = '';
 
@@ -742,7 +756,7 @@
     hideDetail();
 
     try {
-      const data = await streamAndSpeakAnswer(parsed);
+      const data = await streamAndSpeakAnswer(parsed, myGeneration);
       // A null result means the answer was interrupted mid-flight (mic tap,
       // reset) — whoever interrupted it already moved the UI on; there is
       // nothing left here to render.
@@ -754,7 +768,7 @@
       setState('idle', conversationMode ? 'Hands-free — listening for your next question…' : 'Tap to ask another question');
       maybeAutoListen();
     } catch (err) {
-      if (answerInterrupted) return; // interrupted mid-network-read, not a real error
+      if (myGeneration !== activeGeneration) return; // interrupted mid-network-read, not a real error
 
       stopTypewriter(false);
       el.answerTyped.textContent = '';
@@ -777,7 +791,7 @@
    * a short first sentence can start almost immediately instead of waiting
    * for the whole answer to generate and then be voiced as a single clip.
    */
-  async function streamAndSpeakAnswer(parsed) {
+  async function streamAndSpeakAnswer(parsed, myGeneration) {
     // A safety net, not a tuning knob: the server's own LLM (6s) and TTS
     // (10s) calls already fail over to a stored answer well inside this
     // window on their own. This only fires if something outside either of
@@ -854,8 +868,8 @@
         chunkChain = chunkChain.then(async () => {
           // Already-queued chunks must not start playing after the listener
           // interrupted an earlier one — a promise chain has no native cancel.
-          if (answerInterrupted) return;
-          await playChunk({ text: data.text, channel }, revealedPrefix);
+          if (myGeneration !== activeGeneration) return;
+          await playChunk({ text: data.text, channel }, revealedPrefix, myGeneration);
           revealedPrefix += data.text + ' ';
         });
       } else if (event === 'audio-frame') {
@@ -873,7 +887,7 @@
 
     try {
       while (true) {
-        if (answerInterrupted) {
+        if (myGeneration !== activeGeneration) {
           await reader.cancel().catch(() => {});
           break;
         }
@@ -914,7 +928,7 @@
 
     await chunkChain.catch(() => {}); // let every already-queued chunk resolve (or no-op) first
 
-    if (answerInterrupted) return null;
+    if (myGeneration !== activeGeneration) return null;
     if (streamError) throw streamError;
     if (!doneData) throw new Error('The answer stream ended early');
 
@@ -927,7 +941,7 @@
    * `prefix` is everything already fully revealed by earlier chunks in this
    * answer — shown instantly, never re-animated.
    */
-  async function playChunk(chunk, prefix) {
+  async function playChunk(chunk, prefix, myGeneration) {
     const displayText = prefix + chunk.text;
 
     if (muted) {
@@ -945,14 +959,14 @@
 
     if (voiceProvider === 'server') {
       try {
-        await playChunkWithServer(chunk, prefix, displayText);
+        await playChunkWithServer(chunk, prefix, displayText, myGeneration);
         return;
       } catch (err) {
         console.warn(`[voice] server audio unavailable this time, using browser speech: ${err.name ? err.name + ': ' : ''}${err.message}`);
       }
     }
 
-    await playChunkWithBrowser(chunk, prefix, displayText);
+    await playChunkWithBrowser(chunk, prefix, displayText, myGeneration);
   }
 
   /**
@@ -968,7 +982,7 @@
    * caller's existing try/catch falls back to browser speech for this one
    * chunk exactly as it always has.
    */
-  async function playChunkWithServer(chunk, prefix, displayText) {
+  async function playChunkWithServer(chunk, prefix, displayText, myGeneration) {
     const audioCtx = window.Orb ? Orb.ensureContext() : null;
     const joinNode = window.Orb ? Orb.ensurePlaybackGraph() : null;
     if (!audioCtx || !joinNode) throw new Error('Web Audio unavailable');
@@ -979,7 +993,7 @@
     const estimatedTotalSec = estimateDuration(chunk.text) / 1000;
 
     for await (const frame of chunk.channel) {
-      if (answerInterrupted) break;
+      if (myGeneration !== activeGeneration) break;
       const wasFirstFrame = !gotAnyFrame;
       gotAnyFrame = true;
 
@@ -1006,7 +1020,7 @@
     }
 
     if (!gotAnyFrame) throw new Error('no audio frames received');
-    if (answerInterrupted) return;
+    if (myGeneration !== activeGeneration) return;
 
     // The frames are all scheduled, but likely still playing — nextStartTime
     // is this chunk's own end time (chunk n+1 has not scheduled anything
@@ -1018,7 +1032,7 @@
   }
 
   /** speechSynthesis fallback for one chunk, syncing the typewriter via boundary events. */
-  function playChunkWithBrowser(chunk, prefix, displayText) {
+  function playChunkWithBrowser(chunk, prefix, displayText, myGeneration) {
     return new Promise((resolve) => {
       const estimated = estimateDuration(chunk.text);
       startTypewriter(displayText, { estimatedMs: estimated });
@@ -1039,6 +1053,10 @@
       if (preferred) utterance.voice = preferred;
 
       utterance.onboundary = (event) => {
+        // A cancelled utterance can still fire a trailing boundary event on
+        // some browsers; without this guard it would sync a NEWER answer's
+        // typewriter using this stale one's prefix and char offsets.
+        if (myGeneration !== activeGeneration) return;
         if (activeTypewriter && typeof event.charIndex === 'number') {
           activeTypewriter.syncTo(prefix.length + event.charIndex, event.charLength || 0);
         }
