@@ -293,6 +293,62 @@ function splitIntoSpeechChunks(text) {
 }
 
 /**
+ * The streaming twin of splitIntoSpeechChunks: same sentence-boundary rule
+ * and same short-fragment-merge rule, but applied as text arrives token by
+ * token instead of to one finished string.
+ *
+ * The reason this exists at all, rather than just waiting for the full
+ * answer and calling splitIntoSpeechChunks once: it lets `onChunkReady` fire
+ * — and TTS synthesis start — for an early sentence while Gemini is still
+ * generating the rest of the answer, instead of paying for the whole
+ * generation call before any synthesis begins at all. A sentence is not
+ * handed over the moment it is seen, though: the merge rule needs to know
+ * whether the *next* sentence is a short fragment before it can be sure a
+ * given sentence is not about to be merged into, so each one is held back
+ * until the one after it has started arriving.
+ */
+function createIncrementalChunker(onChunkReady) {
+  const sentenceRe = /^[^.!?]+[.!?]+(?:\s+|$)/;
+  let buffer = '';
+  let pending = null; // a settled sentence not yet confirmed to be its own chunk
+
+  function normalise(raw) {
+    return raw.replace(/\s+/g, ' ').trim();
+  }
+
+  function feed(delta) {
+    buffer += delta;
+    let match;
+    while ((match = sentenceRe.exec(buffer)) !== null) {
+      const trimmed = normalise(match[0]);
+      buffer = buffer.slice(match[0].length);
+      if (!trimmed) continue;
+      if (pending !== null && trimmed.length < 20) {
+        pending += ' ' + trimmed;
+      } else {
+        if (pending !== null) onChunkReady(pending);
+        pending = trimmed;
+      }
+    }
+  }
+
+  /** Whatever never reached a `.!?` terminator becomes the final piece. */
+  function finish() {
+    const tail = normalise(buffer);
+    buffer = '';
+    if (pending !== null && tail && tail.length < 20) {
+      onChunkReady(pending + ' ' + tail);
+    } else {
+      if (pending !== null) onChunkReady(pending);
+      if (tail) onChunkReady(tail);
+    }
+    pending = null;
+  }
+
+  return { feed, finish };
+}
+
+/**
  * Synthesises one chunk's audio, checking the cache first — the same logic
  * `/api/speak` uses, factored out so the ask pipeline can call it per chunk.
  * Returns null when no provider is configured; the client falls back to its
@@ -337,16 +393,31 @@ async function synthesiseChunkAudio(text) {
 }
 
 /**
- * Produces the answer to a question.
+ * Produces the answer to a question, plus (when `synthesiseAudio` is true)
+ * the exact per-sentence chunk list — text and an already-in-flight TTS
+ * promise for each — that the caller should send on. Building that list
+ * here rather than handing back plain text for the caller to re-chunk keeps
+ * one single source of truth: the text a chunk's audio was synthesised from
+ * is always the literal text the client is later told to display for it.
+ *
+ * When Gemini is answering (not a cache hit, not the no-LLM path), each
+ * chunk's TTS call is fired the moment that sentence is confirmed complete
+ * — while Gemini is still generating the rest of the answer — rather than
+ * waiting for the full generation to finish before any synthesis begins.
+ * Sentence n and the LLM call finishing generation of sentences n+1..end now
+ * happen at the same time instead of one after the other, which is where
+ * most of the old "silence before the first word" delay came from: a whole
+ * LLM call (typically 1-2s) that used to be pure dead time in front of TTS,
+ * now overlapped with it instead.
  *
  * Keyword retrieval always runs — it is in-memory and free, and it supplies the
  * source entry, its long-form `detail`, and the entry id used for gap logging.
  * When a model is configured its prose replaces the stored answer text, but
  * everything around the answer still comes from retrieval.
  *
- * @param {{question: string, kb: object, onDelta?: (text: string) => void}} options
+ * @param {{question: string, kb: object, synthesiseAudio?: boolean}} options
  */
-async function resolveAnswer({ question, kb, onDelta, onReset }) {
+async function resolveAnswer({ question, kb, synthesiseAudio = true }) {
   const retrieved = kb.answer(question);
 
   const base = {
@@ -356,9 +427,14 @@ async function resolveAnswer({ question, kb, onDelta, onReset }) {
     alternatives: retrieved.alternatives,
   };
 
+  const chunksFromText = (text) =>
+    splitIntoSpeechChunks(text).map((t) => ({
+      text: t,
+      synthPromise: synthesiseAudio ? synthesiseChunkAudio(t) : null,
+    }));
+
   if (!llm.isConfigured()) {
-    if (onDelta) onDelta(retrieved.answer);
-    return { ...base, answer: retrieved.answer, matched: retrieved.matched, via: retrieved.via };
+    return { ...base, answer: retrieved.answer, matched: retrieved.matched, via: retrieved.via, chunks: chunksFromText(retrieved.answer) };
   }
 
   // Repeat questions should cost nothing. The knowledge base version is in the
@@ -375,25 +451,31 @@ async function resolveAnswer({ question, kb, onDelta, onReset }) {
 
     const cached = await db.getCachedAnswer(cacheHash);
     if (cached) {
-      if (onDelta) onDelta(cached.answer);
       return {
         ...base,
         answer: cached.answer,
         matched: cached.matched,
         detail: cached.matched ? base.detail : null,
         via: 'gemini-cache',
+        chunks: chunksFromText(cached.answer),
       };
     }
   } catch (err) {
     console.error(`[ask] answer cache unavailable: ${err.message}`);
   }
 
+  const readyChunks = [];
+  const chunker = createIncrementalChunker((text) => {
+    readyChunks.push({ text, synthPromise: synthesiseAudio ? synthesiseChunkAudio(text) : null });
+  });
+
   try {
     let text = '';
-    for await (const chunk of llm.streamAnswer(question, kb)) {
-      text += chunk;
-      if (onDelta) onDelta(chunk);
+    for await (const delta of llm.streamAnswer(question, kb)) {
+      text += delta;
+      chunker.feed(delta);
     }
+    chunker.finish();
 
     const result = llm.finalise(text, kb);
 
@@ -414,15 +496,18 @@ async function resolveAnswer({ question, kb, onDelta, onReset }) {
       matched: result.matched,
       detail: result.matched ? base.detail : null,
       via: 'gemini',
+      // readyChunks was built from the same literal text finalise() just
+      // validated, so it is exactly right whether the model produced a real
+      // answer or (legitimately) came back with the fallback sentence.
+      chunks: readyChunks,
     };
   } catch (err) {
-    // Never let a model failure cost the visitor their answer.
+    // Never let a model failure cost the visitor their answer. Anything in
+    // readyChunks was speculative synthesis for text that will never be
+    // shown — its promises just resolve unused in the background, nothing
+    // to cancel or clean up.
     console.error(`[ask] ${err.code || 'ERROR'} from Gemini, using retrieval: ${err.message}`);
-    // The failure can arrive after partial text was already streamed; tell the
-    // client to drop it so the stored answer replaces it rather than appending.
-    if (onReset) onReset();
-    if (onDelta) onDelta(retrieved.answer);
-    return { ...base, answer: retrieved.answer, matched: retrieved.matched, via: `${retrieved.via}-fallback` };
+    return { ...base, answer: retrieved.answer, matched: retrieved.matched, via: `${retrieved.via}-fallback`, chunks: chunksFromText(retrieved.answer) };
   }
 }
 
@@ -430,12 +515,17 @@ async function handleAsk({ res, question, raw, kb, stream }) {
   const started = Date.now();
 
   if (!stream) {
-    const result = await resolveAnswer({ question, kb });
+    // Nothing here ever plays audio — the JSON path exists for curl/basic
+    // compatibility, and a client on it would call /api/speak separately if
+    // it wanted sound. Skipping synthesis avoids paying for TTS calls a
+    // response like this never uses.
+    const result = await resolveAnswer({ question, kb, synthesiseAudio: false });
     finishAsk({ question, raw, result, started });
+    const { chunks, ...jsonSafe } = result; // chunks holds live Promises, not JSON
     sendJson(res, 200, {
       question,
       raw,
-      ...result,
+      ...jsonSafe,
       speechToken: signText(result.answer),
       answeredAt: new Date().toISOString(),
     });
@@ -445,11 +535,12 @@ async function handleAsk({ res, question, raw, kb, stream }) {
   sseInit(res);
   sseSend(res, 'meta', { question, raw });
 
-  // The answer is resolved in full before anything reaches the client — the
-  // earlier design streamed raw LLM tokens onto the screen as they generated,
-  // which let the full answer finish appearing well before its audio (a
-  // separate, single request for the whole answer) was even requested. Text
-  // now only appears in step with each chunk's own audio below.
+  // resolveAnswer already kicked off each chunk's TTS synthesis the moment
+  // that sentence was confirmed complete — for the Gemini path, that started
+  // while later sentences were still being generated, not after. What
+  // happens here is just collecting results and sending them, strictly in
+  // order (chunk 2 is never emitted before chunk 1), so playback order on
+  // the client is unaffected by however the synthesis calls actually finish.
   let result;
   try {
     result = await resolveAnswer({ question, kb });
@@ -462,23 +553,12 @@ async function handleAsk({ res, question, raw, kb, stream }) {
 
   finishAsk({ question, raw, result, started });
 
-  // Every chunk's synthesis is kicked off up front, in parallel — not one at
-  // a time — since each is an independent call to Gemini with no shared
-  // state. Sending still happens strictly in order (chunk 2 is never emitted
-  // before chunk 1), so the client's playback order is unaffected; only the
-  // server-side wait changes; from "sum of every chunk's synthesis time" to
-  // "whichever chunk in the batch takes longest". A four-sentence answer that
-  // used to take ~23s to finish speaking now takes roughly as long as its
-  // slowest single sentence.
-  const chunks = splitIntoSpeechChunks(result.answer);
-  const synthPromises = chunks.map((text) => synthesiseChunkAudio(text));
-
-  for (let i = 0; i < chunks.length; i += 1) {
-    const text = chunks[i];
-    const spoken = await synthPromises[i];
+  for (let i = 0; i < result.chunks.length; i += 1) {
+    const { text, synthPromise } = result.chunks[i];
+    const spoken = await synthPromise;
     sseSend(res, 'chunk', {
       index: i,
-      isLast: i === chunks.length - 1,
+      isLast: i === result.chunks.length - 1,
       text,
       speechToken: signText(text),
       audioBase64: spoken ? spoken.audioBase64 : null,
