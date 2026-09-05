@@ -89,10 +89,16 @@
     for (const d of drawn) {
       const depth = (d.z / radius + 1) / 2;
       const alpha = 0.16 + depth * 0.48 + audioLevel * 0.16;
-      const s = d.p.size * (0.7 + depth * 0.75);
+      // ctx.arc() throws on a negative radius, and an uncaught throw here
+      // would abort this function before its own requestAnimationFrame
+      // call — silently killing the entire animation for the rest of the
+      // page's life over one bad frame. depth (and so s) should always be
+      // positive by construction, but clamping costs nothing and a frozen
+      // orb is a worse failure mode than one frame drawn slightly wrong.
+      const s = Math.max(0.1, d.p.size * (0.7 + depth * 0.75));
       ctx.beginPath();
       ctx.arc(cx + d.x, cy + d.y, s, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(216, 226, 225, ${Math.min(alpha, 1)})`;
+      ctx.fillStyle = `rgba(203, 214, 255, ${Math.min(Math.max(alpha, 0), 1)})`;
       ctx.fill();
     }
 
@@ -296,7 +302,19 @@
     getPlaybackLevel,
   };
 
-  window.addEventListener('resize', resize);
+  // A plain window 'resize' listener isn't enough: the idle screen now
+  // hides this canvas entirely (display: none) until a conversation
+  // starts, so the very first resize() call — running at page load, while
+  // idle — sees a 0×0 box and bails out without ever building particles or
+  // sizing the canvas. No window resize event fires when CSS later makes
+  // the element visible again on its own (a state change, not a viewport
+  // change), so that bail was permanent — every particle kept whatever
+  // stale x/y/z it never actually got, and the drawing loop's radius/depth
+  // math on those went arbitrarily large or negative, throwing on
+  // ctx.arc(). A ResizeObserver on the element itself fires for every
+  // reason its box can change, display toggles included, so it re-runs
+  // resize() exactly when the canvas actually needs it.
+  new ResizeObserver(resize).observe(canvas);
   resize();
   requestAnimationFrame(animate);
 })();

@@ -1,25 +1,29 @@
 /*
- * Visual language ported from a reference "voice orb" mock: dark teal ground,
- * a breathing particle sphere, quiet circular chrome. Deliberately one theme —
- * an immersive voice-assistant surface, not a document — the same choice
+ * Visual language: a deep-space ground with a distant starfield, a glowing
+ * blue-to-violet planetary ring as the idle hero, and the same quiet
+ * circular chrome and breathing particle orb as before once a
+ * conversation actually starts. Deliberately one theme — an immersive
+ * voice-assistant surface, not a document — the same choice
  * Siri/Assistant/Alexa make for their listening screens.
  */
 
 :root {
-  --bg: #20292b;
-  --bg-2: #252f31;
-  --dot: #aeb9b9;
-  --dot-hot: #d8e2e1;
-  --btn: #394447;
-  --btn-hover: #445154;
-  --btn-active: #e7eeee;
-  --btn-active-text: #233033;
-  --text: #e6eded;
-  --muted: #aeb8b8;
-  --faint: #7c8888;
-  --panel: rgba(37, 47, 49, 0.5);
-  --panel-border: rgba(174, 185, 185, 0.12);
+  --bg: #05060f;
+  --bg-2: #0a0d1f;
+  --dot: #9aa8e0;
+  --dot-hot: #cddaff;
+  --btn: #161a30;
+  --btn-hover: #212945;
+  --btn-active: #eef1ff;
+  --btn-active-text: #0c0e1c;
+  --text: #edeffb;
+  --muted: #9aa0c4;
+  --faint: #62698f;
+  --panel: rgba(18, 22, 44, 0.55);
+  --panel-border: rgba(150, 160, 220, 0.16);
   --danger: #e2a08a;
+  --ring-blue: #4d8dff;
+  --ring-violet: #a855f7;
   --radius: 16px;
 }
 
@@ -35,9 +39,12 @@ body {
 
 body {
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.03), transparent 38%),
-    linear-gradient(180deg, var(--bg-2), var(--bg));
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 50% 28%, rgba(90, 120, 220, 0.08), transparent 45%),
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iNDAwIj48Y2lyY2xlIGN4PSIzNTQuNCIgY3k9IjMyNy4xIiByPSIxLjE2IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNzEiLz48Y2lyY2xlIGN4PSIyMjQuOCIgY3k9IjI4OC40IiByPSIwLjg0IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuMjgiLz48Y2lyY2xlIGN4PSIyODEuMiIgY3k9IjMxMi4zIiByPSIwLjk0IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNDQiLz48Y2lyY2xlIGN4PSIyOTYuNSIgY3k9IjM3OS4wIiByPSIxLjE5IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNzkiLz48Y2lyY2xlIGN4PSI3My4xIiBjeT0iNTQuMCIgcj0iMC44OSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjc1Ii8+PGNpcmNsZSBjeD0iNjUuMyIgY3k9IjE3Ni43IiByPSIwLjU4IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNTUiLz48Y2lyY2xlIGN4PSIyNjguMiIgY3k9IjE2LjIiIHI9IjAuNzkiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC43MCIvPjxjaXJjbGUgY3g9IjE3My4yIiBjeT0iMjkzLjYiIHI9IjAuNDEiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC43OSIvPjxjaXJjbGUgY3g9IjE5MC4xIiBjeT0iNzAuNiIgcj0iMS4wOSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjM2Ii8+PGNpcmNsZSBjeD0iMTM2LjMiIGN5PSIzMDUuMyIgcj0iMC41NiIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjI3Ii8+PGNpcmNsZSBjeD0iMzkxLjkiIGN5PSI3NC4wIiByPSIwLjkwIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuODIiLz48Y2lyY2xlIGN4PSIxMjIuNCIgY3k9IjI2MC45IiByPSIwLjM3IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuMjkiLz48Y2lyY2xlIGN4PSIxNjcuMyIgY3k9IjMxMi44IiByPSIxLjA5IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNDgiLz48Y2lyY2xlIGN4PSIxOTUuNyIgY3k9IjYxLjgiIHI9IjEuMTUiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC42MiIvPjxjaXJjbGUgY3g9IjEyOC43IiBjeT0iMjE0LjEiIHI9IjAuODEiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC43MyIvPjxjaXJjbGUgY3g9IjIyNy45IiBjeT0iMzA1LjUiIHI9IjEuMTgiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41MyIvPjxjaXJjbGUgY3g9IjI1MS40IiBjeT0iMTIzLjciIHI9IjAuODciIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41OSIvPjxjaXJjbGUgY3g9Ijc1LjciIGN5PSIxOTcuMCIgcj0iMC4zMiIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjI3Ii8+PGNpcmNsZSBjeD0iMTg0LjgiIGN5PSIxNTAuMSIgcj0iMC41NSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgyIi8+PGNpcmNsZSBjeD0iMjUuNiIgY3k9IjEyNi4zIiByPSIwLjY1IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNTUiLz48Y2lyY2xlIGN4PSIyMzAuMiIgY3k9Ijc2LjIiIHI9IjAuMzkiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41MyIvPjxjaXJjbGUgY3g9IjMwNC43IiBjeT0iMTEzLjIiIHI9IjAuNjgiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41NyIvPjxjaXJjbGUgY3g9IjE4NS4wIiBjeT0iMzM2LjMiIHI9IjEuMTEiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4yOCIvPjxjaXJjbGUgY3g9IjU4LjgiIGN5PSIxMTguMyIgcj0iMC43MyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjcwIi8+PGNpcmNsZSBjeD0iNTQuMyIgY3k9IjYxLjUiIHI9IjAuMzgiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC43NSIvPjxjaXJjbGUgY3g9IjE5Ni4zIiBjeT0iMjIwLjQiIHI9IjEuMDMiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC44MCIvPjxjaXJjbGUgY3g9IjIyOC4wIiBjeT0iMTkwLjAiIHI9IjEuMDQiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41OSIvPjxjaXJjbGUgY3g9IjEwMC4xIiBjeT0iMjYxLjciIHI9IjEuMTQiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41OCIvPjxjaXJjbGUgY3g9IjMyNi4xIiBjeT0iNDUuMyIgcj0iMS4wMSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjY4Ii8+PGNpcmNsZSBjeD0iMjA0LjciIGN5PSIxNTguMSIgcj0iMS4wMiIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjU4Ii8+PGNpcmNsZSBjeD0iMzA4LjkiIGN5PSIxODAuMyIgcj0iMC44NyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjQ1Ii8+PGNpcmNsZSBjeD0iNDEuMCIgY3k9Ijc3LjUiIHI9IjAuNzciIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4zNSIvPjxjaXJjbGUgY3g9IjI1NS41IiBjeT0iMjg5LjEiIHI9IjAuMzYiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC40OCIvPjxjaXJjbGUgY3g9IjE0Ny4zIiBjeT0iODQuMiIgcj0iMS4wNyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjc3Ii8+PGNpcmNsZSBjeD0iNy44IiBjeT0iMTgzLjgiIHI9IjAuODkiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC44MCIvPjxjaXJjbGUgY3g9IjI0Ny4wIiBjeT0iNDkuNyIgcj0iMC41NyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjcwIi8+PGNpcmNsZSBjeD0iMjgyLjAiIGN5PSIyMzkuOSIgcj0iMC41MyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjc0Ii8+PGNpcmNsZSBjeD0iOTMuMiIgY3k9IjIzMC45IiByPSIxLjA3IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNjIiLz48Y2lyY2xlIGN4PSI0NS45IiBjeT0iMTA2LjciIHI9IjAuNDQiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC40MiIvPjxjaXJjbGUgY3g9IjE3OS43IiBjeT0iMTE0LjEiIHI9IjAuNzYiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC43NCIvPjxjaXJjbGUgY3g9IjE2My43IiBjeT0iODUuMyIgcj0iMS4wMyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgyIi8+PGNpcmNsZSBjeD0iMzE4LjkiIGN5PSIzMjYuNiIgcj0iMC41OSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjY2Ii8+PGNpcmNsZSBjeD0iMTA3LjAiIGN5PSIzNzMuNSIgcj0iMC41NiIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjYwIi8+PGNpcmNsZSBjeD0iODYuMCIgY3k9IjEzLjkiIHI9IjAuNDUiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC42MCIvPjxjaXJjbGUgY3g9IjEzMi42IiBjeT0iMTc2LjEiIHI9IjAuNjkiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC42MSIvPjxjaXJjbGUgY3g9IjMzMC42IiBjeT0iODQuOCIgcj0iMC41MyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjY5Ii8+PGNpcmNsZSBjeD0iMTI2LjkiIGN5PSIyODMuMiIgcj0iMC44MyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjM1Ii8+PGNpcmNsZSBjeD0iMTUzLjciIGN5PSIzMjEuOSIgcj0iMC40NyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjY3Ii8+PGNpcmNsZSBjeD0iMzE3LjIiIGN5PSIzMTQuNSIgcj0iMC4zNiIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgzIi8+PGNpcmNsZSBjeD0iMTUzLjAiIGN5PSIzNTkuOSIgcj0iMC45OSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjQ5Ii8+PGNpcmNsZSBjeD0iMjQ4LjkiIGN5PSIyMzAuNyIgcj0iMC41MSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjY0Ii8+PGNpcmNsZSBjeD0iMzMzLjMiIGN5PSIxMjkuNSIgcj0iMC42NSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgyIi8+PGNpcmNsZSBjeD0iMzAuOSIgY3k9IjExMC42IiByPSIwLjYxIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuODAiLz48Y2lyY2xlIGN4PSIyODQuOSIgY3k9IjE2OS4xIiByPSIwLjUyIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuMzIiLz48Y2lyY2xlIGN4PSIyNDUuOCIgY3k9IjE5Ni4zIiByPSIxLjEyIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNDUiLz48Y2lyY2xlIGN4PSIyNy40IiBjeT0iMjAyLjEiIHI9IjEuMTkiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC40OSIvPjxjaXJjbGUgY3g9IjEyOC4yIiBjeT0iMy44IiByPSIxLjEwIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNzEiLz48Y2lyY2xlIGN4PSIzMjEuMyIgY3k9IjM4MS42IiByPSIwLjU1IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNzIiLz48Y2lyY2xlIGN4PSI5LjAiIGN5PSIxMDEuMCIgcj0iMC42NSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjU1Ii8+PGNpcmNsZSBjeD0iNDUuNyIgY3k9IjEuNSIgcj0iMS4wNCIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjQyIi8+PGNpcmNsZSBjeD0iMjYuNCIgY3k9IjE1Mi4yIiByPSIwLjQ1IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuODQiLz48Y2lyY2xlIGN4PSIyNDIuNSIgY3k9Ijc0LjAiIHI9IjAuNDciIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC44MCIvPjxjaXJjbGUgY3g9IjMwMy44IiBjeT0iMjguOCIgcj0iMC45NSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjQzIi8+PGNpcmNsZSBjeD0iMjcuNyIgY3k9IjE3NC41IiByPSIwLjUxIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNjEiLz48Y2lyY2xlIGN4PSIxOTQuNSIgY3k9IjM4Ny43IiByPSIwLjM1IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNDIiLz48Y2lyY2xlIGN4PSIzNjkuNCIgY3k9IjM1Mi40IiByPSIwLjUyIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNTYiLz48Y2lyY2xlIGN4PSIxOTIuMSIgY3k9IjMxNS40IiByPSIwLjQ0IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNDEiLz48Y2lyY2xlIGN4PSIxMzEuNiIgY3k9IjEwOC45IiByPSIwLjkwIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNDIiLz48Y2lyY2xlIGN4PSIxMDkuMSIgY3k9IjM5LjAiIHI9IjAuMzYiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC42MCIvPjxjaXJjbGUgY3g9IjM4Ni4xIiBjeT0iNDEuNSIgcj0iMC44NCIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjY3Ii8+PGNpcmNsZSBjeD0iMzIwLjciIGN5PSIzMDQuMSIgcj0iMC45MiIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjYwIi8+PGNpcmNsZSBjeD0iMTg5LjQiIGN5PSIxNTUuMiIgcj0iMS4wNyIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjM0Ii8+PGNpcmNsZSBjeD0iNzYuMyIgY3k9IjE5LjQiIHI9IjAuNTAiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41NiIvPjxjaXJjbGUgY3g9IjIyOC4yIiBjeT0iNDAuMCIgcj0iMS4wMSIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjc1Ii8+PGNpcmNsZSBjeD0iNzcuMiIgY3k9IjE2Ny42IiByPSIwLjU1IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuODAiLz48Y2lyY2xlIGN4PSIzMjkuNiIgY3k9IjExNS44IiByPSIwLjk0IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNTAiLz48Y2lyY2xlIGN4PSIxMjEuMCIgY3k9IjM4My40IiByPSIwLjg2IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNjkiLz48Y2lyY2xlIGN4PSIzOS4xIiBjeT0iMzQzLjEiIHI9IjEuMTkiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC41NyIvPjxjaXJjbGUgY3g9IjIxMi40IiBjeT0iMTk3LjUiIHI9IjAuOTMiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4yOSIvPjxjaXJjbGUgY3g9IjI2NS42IiBjeT0iMC44IiByPSIxLjA4IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuODAiLz48Y2lyY2xlIGN4PSIzNDEuNyIgY3k9IjE0OC4yIiByPSIwLjkwIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuNjYiLz48Y2lyY2xlIGN4PSIzOTEuNiIgY3k9IjEzMC45IiByPSIxLjEwIiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuMzIiLz48Y2lyY2xlIGN4PSIxMjguNyIgY3k9IjM1OS4wIiByPSIwLjQ3IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuMjkiLz48Y2lyY2xlIGN4PSI1MS44IiBjeT0iMjQ5LjYiIHI9IjEuMTciIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC44NSIvPjxjaXJjbGUgY3g9IjMzMy43IiBjeT0iMTgyLjkiIHI9IjEuMTMiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4zOSIvPjxjaXJjbGUgY3g9IjM3Ny4wIiBjeT0iMTI0LjUiIHI9IjAuNTIiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC43NiIvPjxjaXJjbGUgY3g9IjIzNS44IiBjeT0iMTEzLjkiIHI9IjAuODEiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4zNSIvPjxjaXJjbGUgY3g9IjMwNS40IiBjeT0iMjIwLjEiIHI9IjAuNzMiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4zMSIvPjxjaXJjbGUgY3g9Ijc3LjEiIGN5PSIzNjQuMiIgcj0iMC45NCIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgwIi8+PGNpcmNsZSBjeD0iMzYwLjciIGN5PSI3LjkiIHI9IjAuNDIiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC43NyIvPjwvc3ZnPg==");
+  background-repeat: repeat;
+  background-size: 100% 100%, 420px 420px;
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -45,7 +52,7 @@ body {
 }
 
 ::selection {
-  background: rgba(216, 226, 225, 0.18);
+  background: rgba(205, 218, 255, 0.2);
 }
 
 /* ---------------- layout ---------------- */
@@ -82,7 +89,7 @@ body {
   height: 8px;
   border-radius: 50%;
   background: var(--dot-hot);
-  box-shadow: 0 0 10px rgba(216, 226, 225, 0.4);
+  box-shadow: 0 0 10px rgba(205, 218, 255, 0.45);
 }
 
 .brand-name {
@@ -105,14 +112,14 @@ body {
   white-space: nowrap;
 }
 
-/* ---------------- circular chrome, matching the reference exactly ---------------- */
+/* ---------------- circular chrome ---------------- */
 
 .icon-btn {
   width: 50px;
   height: 50px;
   border: 0;
   border-radius: 50%;
-  background: rgba(63, 75, 78, 0.78);
+  background: rgba(22, 26, 48, 0.78);
   color: var(--text);
   display: grid;
   place-items: center;
@@ -120,7 +127,7 @@ body {
   backdrop-filter: blur(10px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 8px 25px rgba(0, 0, 0, 0.12);
+    0 8px 25px rgba(0, 0, 0, 0.25);
   transition: 0.2s ease;
   flex: none;
 }
@@ -154,7 +161,7 @@ body {
   display: none;
 }
 
-/* ---------------- orb ---------------- */
+/* ---------------- orb (listening / thinking / speaking) ---------------- */
 
 .orb-stage {
   position: relative;
@@ -166,16 +173,22 @@ body {
   flex: none;
 }
 
+/* The idle screen has its own much larger hero ring (see below) — the
+   small reactive orb only matters once a conversation is under way. */
+body[data-state="idle"] .orb-stage {
+  display: none;
+}
+
 #orb {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 0 18px rgba(190, 210, 210, 0.05));
+  filter: drop-shadow(0 0 18px rgba(130, 155, 255, 0.1));
   transition: filter 0.3s ease;
 }
 
 body[data-state="listening"] #orb,
 body[data-state="speaking"] #orb {
-  filter: drop-shadow(0 0 26px rgba(190, 210, 210, 0.09));
+  filter: drop-shadow(0 0 26px rgba(130, 155, 255, 0.18));
 }
 
 /* ---------------- content stage (scrolls when an answer needs room) ---------------- */
@@ -192,25 +205,96 @@ body[data-state="speaking"] #orb {
   scrollbar-color: var(--btn) transparent;
 }
 
+/* ---------------- idle hero: glowing ring + name ---------------- */
+
 .empty-state {
-  text-align: center;
-  animation: rise 0.5s ease both;
+  display: grid;
+  place-items: center;
+  animation: rise 0.6s ease both;
 }
 
-.empty-state h1 {
-  font-size: clamp(21px, 4.6vw, 27px);
-  font-weight: 600;
-  line-height: 1.3;
-  margin: 0 0 8px;
-  letter-spacing: -0.01em;
+/* An authored `display` on the same element outranks the UA [hidden] rule
+   in some engines — pin it explicitly rather than rely on that (same class
+   of bug as .icon-btn svg[hidden] above). Without this the hero ring stays
+   visible, overlapping the question/answer text, once a question starts. */
+.empty-state[hidden] {
+  display: none;
+}
+
+.hero-ring,
+.hero-content {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.hero-ring {
+  position: relative;
+  width: min(84vw, 380px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, rgba(90, 125, 220, 0.22), rgba(6, 8, 18, 0.94) 62%);
+  animation: hero-breathe 7s ease-in-out infinite;
+}
+
+.hero-ring::before {
+  /* The outer bloom — a soft halo behind the ring, not the ring itself. */
+  content: "";
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(100, 140, 255, 0.22), rgba(168, 85, 247, 0.12) 45%, transparent 72%);
+  filter: blur(26px);
+  z-index: -1;
+}
+
+.hero-ring-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 1.5px;
+  background: conic-gradient(from 200deg, var(--ring-blue), var(--ring-violet), var(--ring-blue) 70%, var(--ring-violet));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.85;
+  animation: hero-rotate 16s linear infinite;
+}
+
+.hero-content {
+  text-align: center;
+  padding: 0 14%;
+  pointer-events: none;
+}
+
+.hero-name {
+  font-size: clamp(19px, 5vw, 27px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #fff;
+  margin: 0;
   text-wrap: balance;
 }
 
-.hint {
+.hero-divider {
+  width: 44px;
+  height: 1px;
+  margin: 16px auto;
+  background: rgba(237, 239, 251, 0.35);
+}
+
+.hero-tagline {
+  font-size: 14.5px;
   color: var(--muted);
-  font-size: 13.5px;
-  margin: 0 auto 18px;
-  max-width: 32ch;
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+
+.hero-subtagline {
+  font-size: 12px;
+  color: var(--faint);
+  margin: 0 auto;
+  max-width: 26ch;
   line-height: 1.5;
 }
 
@@ -234,7 +318,7 @@ body[data-state="speaking"] #orb {
 }
 
 .chip {
-  background: rgba(174, 185, 185, 0.1);
+  background: rgba(150, 160, 220, 0.12);
   border-radius: 999px;
   color: var(--muted);
   font-size: 9.5px;
@@ -298,7 +382,7 @@ body[data-state="speaking"] #orb {
   padding: 2px 0;
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: rgba(174, 185, 185, 0.4);
+  text-decoration-color: rgba(150, 160, 220, 0.4);
 }
 
 .link-btn:hover {
@@ -390,8 +474,8 @@ body[data-state="speaking"] .icon-btn.mic {
   background: var(--btn-active);
   color: var(--btn-active-text);
   box-shadow:
-    0 0 0 7px rgba(231, 238, 238, 0.05),
-    0 10px 28px rgba(0, 0, 0, 0.16);
+    0 0 0 7px rgba(205, 218, 255, 0.08),
+    0 10px 28px rgba(0, 0, 0, 0.28);
 }
 
 body[data-state="thinking"] .icon-btn.mic {
@@ -440,7 +524,7 @@ body[data-state="thinking"] .icon-btn.mic svg {
   background: var(--dot-hot);
   border: none;
   border-radius: 12px;
-  color: #1c2426;
+  color: var(--btn-active-text);
   cursor: pointer;
   font-family: inherit;
   font-size: 14px;
@@ -482,6 +566,25 @@ body[data-state="thinking"] .icon-btn.mic svg {
   }
 }
 
+@keyframes hero-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.015);
+  }
+}
+
+@keyframes hero-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
@@ -496,6 +599,9 @@ body[data-state="thinking"] .icon-btn.mic svg {
   }
   .orb-stage {
     width: min(78vw, 300px);
+  }
+  .hero-ring {
+    width: min(92vw, 340px);
   }
   .icon-btn {
     width: 46px;
@@ -514,5 +620,8 @@ body[data-state="thinking"] .icon-btn.mic svg {
   .orb-stage {
     width: min(56vw, 240px);
     margin-top: 4px;
+  }
+  .hero-ring {
+    width: min(70vw, 280px);
   }
 }
