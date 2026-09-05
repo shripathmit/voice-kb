@@ -237,6 +237,25 @@
   }
 
   /**
+   * The current loudness of our own playing answer (0-1, or 0 when nothing
+   * is wired up). This is the real, live level of what the speaker is
+   * actually putting out — not an estimate — so it works as a reference
+   * signal for telling "the visitor is talking over the answer" apart from
+   * "the phone's own speaker is bleeding into its own mic," which a fixed
+   * volume threshold cannot do: a browser's echoCancellation constraint is
+   * built for WebRTC call audio and on many devices does nothing at all for
+   * a plain <audio> element's output, so the raw mic level alone is not a
+   * reliable signal for barge-in on its own.
+   */
+  function getPlaybackLevel() {
+    if (!playbackAnalyser || !playbackData) return 0;
+    playbackAnalyser.getByteFrequencyData(playbackData);
+    let sum = 0;
+    for (let i = 0; i < playbackData.length; i += 1) sum += playbackData[i];
+    return Math.min(1, sum / playbackData.length / 70);
+  }
+
+  /**
    * There is nothing to tear down between answers — the graph is built once
    * and deliberately kept alive for reuse. Mode switches already stop
    * reading from it via useIdleLevel()/useThinkingLevel(); this exists so
@@ -283,6 +302,7 @@
     useSyntheticPulse,
     ensureContext,
     playSilentBuffer,
+    getPlaybackLevel,
   };
 
   window.addEventListener('resize', resize);

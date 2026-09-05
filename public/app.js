@@ -196,15 +196,23 @@
   let bargeInRaf = null;
   let bargeInAboveSince = null;
 
-  // A single loud frame does not count — a cough, a tap sound, or echo the
-  // browser's own cancellation missed could trigger a false interrupt mid-
-  // sentence. Requiring the level to stay above threshold for this long
-  // filters those out while still feeling immediate for real speech. Real
-  // device testing (mic/speaker distance, browser AEC quality) is the only
-  // way to tune these two constants — this sandbox has no real microphone
-  // to verify against.
-  const BARGE_IN_THRESHOLD = 0.14;
-  const BARGE_IN_HOLD_MS = 320;
+  // A fixed volume threshold does not work here: `echoCancellation: true` on
+  // getUserMedia is built for WebRTC call audio, and on plenty of real
+  // devices (mobile Safari especially) it does nothing at all for a plain
+  // <audio> element's output — confirmed live: the very first version of
+  // this used a fixed level and self-interrupted the instant the answer
+  // started speaking, every time, on a real phone. The fix is to stop
+  // guessing a number and instead measure OUR OWN output level in real time
+  // (Orb.getPlaybackLevel(), the same analyser already driving the orb's
+  // visual pulse) and require the mic to read meaningfully louder than that,
+  // not just louder than a constant. When we go quiet between words the bar
+  // drops with it, so a genuine interruption in a natural pause is still
+  // caught quickly; while we are speaking loudly the bar rises with it, so
+  // our own bleed-through has to actually beat what it would take to be
+  // heard over ourselves.
+  const BARGE_IN_BASE = 0.1; // floor so background noise cannot trigger during a silent gap
+  const BARGE_IN_ECHO_MARGIN = 1.7; // mic must read this many times our own current output
+  const BARGE_IN_HOLD_MS = 320; // sustained, not a single loud frame — filters a cough or a tap sound
 
   async function startBargeInMonitor() {
     if (!conversationMode || !SpeechRecognition || bargeInStream) return;
@@ -239,6 +247,11 @@
     source.connect(bargeInAnalyser);
     bargeInData = new Uint8Array(bargeInAnalyser.frequencyBinCount);
     bargeInAboveSince = null;
+    // The playback analyser can take a frame or two to attach after speaking
+    // starts, which would read as 0 right as the loudest part of the answer
+    // (its opening) attacks — a false huge ratio in that split second. Wait
+    // for things to settle before evaluating anything.
+    const armedAt = performance.now() + 300;
 
     const tick = () => {
       if (!bargeInAnalyser) return; // stopBargeInMonitor() already ran
@@ -247,7 +260,10 @@
       for (let i = 0; i < bargeInData.length; i += 1) sum += bargeInData[i];
       const level = Math.min(1, sum / bargeInData.length / 70);
 
-      if (level >= BARGE_IN_THRESHOLD) {
+      const playbackLevel = Orb.getPlaybackLevel();
+      const dynamicThreshold = BARGE_IN_BASE + playbackLevel * BARGE_IN_ECHO_MARGIN;
+
+      if (performance.now() >= armedAt && level >= dynamicThreshold) {
         if (bargeInAboveSince === null) {
           bargeInAboveSince = performance.now();
         } else if (performance.now() - bargeInAboveSince >= BARGE_IN_HOLD_MS) {
