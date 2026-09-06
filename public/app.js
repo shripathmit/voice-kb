@@ -62,7 +62,6 @@
   // answer gets its own fresh attempt.
   let voiceProvider = 'browser';
   let currentAudio = null;
-  let micStream = null;
   let audioUnlocked = false;
   let playbackAudio = null;
   // Server-voice playback plays a live stream of short PCM frames scheduled
@@ -149,44 +148,8 @@
     if (message !== undefined) setStatus(message);
     el.mic.setAttribute('aria-label', next === 'listening' ? 'Stop listening' : 'Start listening');
 
-    if (window.Orb) Orb.setMode(next);
-    // The orb's mic teardown only disconnects the Web Audio graph; the
-    // getUserMedia stream itself is owned here and must be stopped
-    // separately, or the browser's mic-in-use indicator never clears.
-    if (prev === 'listening' && next !== 'listening') stopMicVisualizer();
     if (next === 'speaking' && prev !== 'speaking') startBargeInMonitor();
     if (prev === 'speaking' && next !== 'speaking') stopBargeInMonitor();
-  }
-
-  /**
-   * Runs a second, independent getUserMedia purely so the orb has real audio
-   * to react to — the Web Speech API captures its own audio internally but
-   * never exposes it. If the user declines this second prompt (or the
-   * permission dialog is suppressed), the orb falls back to a synthetic
-   * pulse rather than sitting still.
-   */
-  async function startMicVisualizer() {
-    if (!window.Orb) return;
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (state !== 'listening') {
-        // Listening ended before the permission prompt resolved.
-        micStream.getTracks().forEach((t) => t.stop());
-        micStream = null;
-        return;
-      }
-      Orb.attachMic(micStream);
-    } catch {
-      if (state === 'listening') Orb.useSyntheticPulse(0.22, 0.06);
-    }
-  }
-
-  function stopMicVisualizer() {
-    if (micStream) {
-      micStream.getTracks().forEach((t) => t.stop());
-      micStream = null;
-    }
-    if (window.Orb) Orb.detachMic();
   }
 
   /* ---------------- barge-in ---------------- */
@@ -211,9 +174,9 @@
   // this used a fixed level and self-interrupted the instant the answer
   // started speaking, every time, on a real phone. The fix is to stop
   // guessing a number and instead measure OUR OWN output level in real time
-  // (Orb.getPlaybackLevel(), the same analyser already driving the orb's
-  // visual pulse) and require the mic to read meaningfully louder than that,
-  // not just louder than a constant. When we go quiet between words the bar
+  // (Orb.getPlaybackLevel(), reading the analyser already wired into the
+  // playback graph) and require the mic to read meaningfully louder than
+  // that, not just louder than a constant. When we go quiet between words the bar
   // drops with it, so a genuine interruption in a natural pause is still
   // caught quickly; while we are speaking loudly the bar rises with it, so
   // our own bleed-through has to actually beat what it would take to be
@@ -420,9 +383,6 @@
     if (muted) {
       const estimated = estimateDuration(text);
       if (typewriter) startTypewriter(text, { estimatedMs: estimated });
-      // No audio at all, but the orb should still visibly "speak" rather than
-      // sit inert — a muted answer is still an answer being given.
-      if (window.Orb) Orb.useSyntheticPulse(0.2, 0.07);
       await new Promise((resolve) => setTimeout(resolve, estimated));
       return;
     }
@@ -500,12 +460,6 @@
                 },
               });
             }
-
-            // This legacy path plays through an <audio> element, which the
-            // orb's Web-Audio-based playback graph has no way to read a
-            // waveform from — a synthetic pulse instead, same as the
-            // browser-speech fallback gets.
-            if (window.Orb) Orb.useSyntheticPulse(0.26, 0.09);
 
             audio.play().catch((err) => done(err));
           },
@@ -649,10 +603,6 @@
         setTimeout(resolve, estimated);
         return;
       }
-
-      // speechSynthesis exposes no audio buffer to analyse, so the orb gets a
-      // believable synthetic pulse instead of going still while it talks.
-      if (window.Orb) Orb.useSyntheticPulse(0.24, 0.08);
 
       synth.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
@@ -952,7 +902,6 @@
         estimatedMs: estimated,
         chars: () => prefix.length + Math.min(chunk.text.length, Math.floor((performance.now() - started) * rate)),
       });
-      if (window.Orb) Orb.useSyntheticPulse(0.2, 0.07);
       await new Promise((resolve) => setTimeout(resolve, estimated));
       return;
     }
@@ -1036,7 +985,6 @@
     return new Promise((resolve) => {
       const estimated = estimateDuration(chunk.text);
       startTypewriter(displayText, { estimatedMs: estimated });
-      if (window.Orb) Orb.useSyntheticPulse(0.24, 0.08);
 
       if (!synth) {
         setTimeout(resolve, estimated);
@@ -1165,7 +1113,6 @@
       finalTranscript = '';
       el.liveTranscript.textContent = '';
       setState('listening', 'Listening — speak now, then pause');
-      startMicVisualizer();
     };
 
     rec.onresult = (event) => {
@@ -1316,7 +1263,6 @@
   el.resetBtn.addEventListener('click', () => {
     conversationMode = false;
     stopListening();
-    stopMicVisualizer();
     stopSpeaking();
     stopTypewriter(false);
     hideDetail();

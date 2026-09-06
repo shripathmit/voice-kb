@@ -161,36 +161,6 @@ body {
   display: none;
 }
 
-/* ---------------- orb (listening / thinking / speaking) ---------------- */
-
-.orb-stage {
-  position: relative;
-  width: min(62vw, 320px);
-  aspect-ratio: 1;
-  margin: 10px auto 0;
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
-/* The idle screen has its own much larger hero ring (see below) — the
-   small reactive orb only matters once a conversation is under way. */
-body[data-state="idle"] .orb-stage {
-  display: none;
-}
-
-#orb {
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(0 0 18px rgba(130, 155, 255, 0.1));
-  transition: filter 0.3s ease;
-}
-
-body[data-state="listening"] #orb,
-body[data-state="speaking"] #orb {
-  filter: drop-shadow(0 0 26px rgba(130, 155, 255, 0.18));
-}
-
 /* ---------------- content stage (scrolls when an answer needs room) ---------------- */
 
 .stage {
@@ -597,9 +567,6 @@ body[data-state="thinking"] .icon-btn.mic svg {
   .screen {
     padding: 0 16px;
   }
-  .orb-stage {
-    width: min(78vw, 300px);
-  }
   .hero-ring {
     width: min(92vw, 340px);
   }
@@ -617,10 +584,6 @@ body[data-state="thinking"] .icon-btn.mic svg {
 }
 
 @media (max-height: 700px) {
-  .orb-stage {
-    width: min(56vw, 240px);
-    margin-top: 4px;
-  }
   .hero-ring {
     width: min(70vw, 280px);
   }
