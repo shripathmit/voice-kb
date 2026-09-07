@@ -191,12 +191,6 @@ body {
   display: none;
 }
 
-.hero-ring,
-.hero-content {
-  grid-column: 1;
-  grid-row: 1;
-}
-
 .hero-ring {
   position: relative;
   width: min(84vw, 380px);
@@ -231,19 +225,31 @@ body {
 }
 
 .hero-content {
+  /* Was a grid sibling of .hero-ring sized off the outer container, not
+     the ring — the ring could shrink under the max-height breakpoint
+     below while this stayed the outer width, letting the name run past
+     the ring's actual edge. Nested inside the ring and sized off ITS
+     box instead, so the two can never drift out of sync. */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 0 14%;
+  padding: 0 16%;
   pointer-events: none;
 }
 
 .hero-name {
-  font-size: clamp(19px, 5vw, 27px);
+  font-size: clamp(15px, 5vw, 27px);
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #fff;
   margin: 0;
   text-wrap: balance;
+  max-width: 100%;
 }
 
 .hero-divider {
