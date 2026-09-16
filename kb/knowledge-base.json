@@ -255,6 +255,14 @@
       "keywords": ["conflict", "disagreement", "disagree", "tension", "team", "resolve", "standoff", "values", "data", "ego"],
       "answer": "Most conflict I've seen on teams isn't really about ego, it's two people optimizing for different things that nobody's said out loud. So I get that explicit first: what's each side actually optimizing for, and is this a disagreement about facts or about values? If it's factual, I look for what data would settle it rather than who's more senior in the room. If it's a real values call, I'd rather make the decision directly and own it than let it turn into a slow standoff that drains the team.",
       "tags": ["work", "leadership"]
+    },
+    {
+      "id": "kb-029",
+      "question": "Have you worked at Netflix?",
+      "patterns": ["did you work at netflix", "what did you do at netflix", "have you worked at netflix", "were you at netflix", "your time at netflix"],
+      "keywords": ["netflix", "streaming"],
+      "answer": "No, I haven't worked at Netflix. My background is Amazon — Register, Retail, and Alexa — and now Moderna. Might be a mix-up with someone else.",
+      "tags": ["identity"]
     }
   ]
 }
