@@ -263,6 +263,14 @@
       "keywords": ["netflix", "streaming"],
       "answer": "No, I haven't worked at Netflix. My background is Amazon — Register, Retail, and Alexa — and now Moderna. Might be a mix-up with someone else.",
       "tags": ["identity"]
+    },
+    {
+      "id": "kb-030",
+      "question": "What's your hiring philosophy?",
+      "patterns": ["what is your hiring philosophy", "your hiring philosophy", "what do you look for when hiring", "what do you look for in a candidate", "what do you look for in a hire", "who do you like to hire", "what makes a good hire", "how do you hire", "your approach to hiring", "what do you look for when hiring a data scientist", "what do you look for in a data scientist", "how do you interview", "how many interviews have you done"],
+      "keywords": ["hire", "hiring", "hires", "candidate", "candidates", "interview", "interviews", "recruit", "recruiting", "philosophy", "team"],
+      "answer": "I look for solid basics in whatever the role actually needs, real problem-solving ability, and someone who's genuinely fun to work with. What matters most is believing that new challenges are coming and trusting we'll solve them together as a team, rather than expecting someone who's already seen it all. I've done a lot of this — more than five hundred interviews at Amazon alone.",
+      "tags": ["work", "leadership", "hiring"]
     }
   ]
 }
