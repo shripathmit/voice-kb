@@ -56,6 +56,11 @@
   // not leave the mic re-opening forever.
   let noSpeechRetries = 0;
   const MAX_NO_SPEECH_RETRIES = 2;
+  // Set once at boot from /api/bootstrap; spoken once, on the first mic tap
+  // of a visit (see playGreeting), never again this session.
+  let welcomeText = '';
+  let welcomeSpeechToken = '';
+  let greetedThisSession = false;
   // 'server' when the backend has a speech provider configured, 'browser'
   // otherwise. Never mutated on failure — a transient blip must not
   // permanently silence the real voice for the rest of the session; each
@@ -379,6 +384,37 @@
    * @param {{typewriter?: boolean}} options `typewriter: false` when the text is
    *   already on screen from streaming — restarting it would rewind the answer.
    */
+  /**
+   * Spoken once, on the visitor's first mic tap of a visit — a welcome,
+   * using the exact text already shown in the hero ring (see /api/bootstrap
+   * and boot()), so the spoken greeting and the visual one are always the
+   * same wording. Not typed into the exchange view — there is no question
+   * to pair it with yet, and the hero ring is still the thing on screen —
+   * this only adds the audio for what is already showing.
+   *
+   * Runs through setState('speaking', ...) on the way, which is also what
+   * arms barge-in — a repeat visitor who does not want to sit through it
+   * can just start talking to cut it off, the same as interrupting any
+   * other answer.
+   */
+  async function playGreeting() {
+    if (greetedThisSession || !welcomeText || muted) return;
+    greetedThisSession = true;
+    setState('speaking', 'Saying hello…');
+    try {
+      await speak(welcomeText, welcomeSpeechToken, { typewriter: false });
+    } catch {
+      /* a failed greeting should never cost the visitor their actual question */
+    }
+    // Only if nothing else already moved state on — an interruption (tap or
+    // barge-in) sets its own next state before this await settles, and
+    // stomping back to 'idle' here would undo that (e.g. it may have
+    // already gone to 'listening'). Without this at all, state is left
+    // stranded on 'speaking' forever: nothing else transitions it out, so
+    // the caller's own "start listening once idle" check never fires.
+    if (state === 'speaking') setState('idle');
+  }
+
   async function speak(text, speechToken, { typewriter = true } = {}) {
     if (muted) {
       const estimated = estimateDuration(text);
@@ -1197,7 +1233,7 @@
 
   /* ---------------- interactions ---------------- */
 
-  el.mic.addEventListener('click', () => {
+  el.mic.addEventListener('click', async () => {
     // Both must happen inside this direct gesture handler, not an async
     // continuation after it — priming them here means audio actually plays
     // (and the orb has real levels to draw) by the time speak() runs.
@@ -1226,7 +1262,11 @@
     }
     conversationMode = true;
     noSpeechRetries = 0;
-    startListening();
+    await playGreeting();
+    // The greeting can be skipped by interrupting it (tap or barge-in),
+    // which already starts (or schedules) listening on its own — only
+    // start it here if that did not already happen.
+    if (conversationMode && state === 'idle') startListening();
   });
 
   function setMuteIcon() {
@@ -1293,6 +1333,8 @@
       const data = await response.json();
 
       voiceProvider = data.voice === 'server' ? 'server' : 'browser';
+      welcomeText = data.welcomeText || '';
+      welcomeSpeechToken = data.welcomeSpeechToken || '';
 
       document.title = `Ask ${data.name}`;
       el.brandName.textContent = `Ask ${data.name}`;

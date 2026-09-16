@@ -743,10 +743,18 @@ async function handleApi(req, res, pathname) {
     try {
       const current = await getKb();
       const subject = current.data.subject || {};
+      // Spoken once, on the visitor's first mic tap, as a welcome — the same
+      // text already shown in the hero ring, so the spoken greeting and the
+      // visual one never drift apart into two different copies of similar
+      // wording. Signed here so /api/speak has proof this server produced
+      // it, the same guard every other spoken text goes through.
+      const welcomeText = [current.data.greeting, current.data.subGreeting].filter(Boolean).join(' ');
       sendJson(res, 200, {
         name: subject.shortName || subject.name || 'me',
         greeting: current.data.greeting,
         subGreeting: current.data.subGreeting || '',
+        welcomeText,
+        welcomeSpeechToken: signText(welcomeText),
         suggestions: current.data.starters || current.suggestions(4),
         placeholder: Boolean(current.data.placeholder),
         entries: current.data.entries.length,

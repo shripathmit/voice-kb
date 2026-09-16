@@ -8,8 +8,8 @@
     "shortName": "Shridhar",
     "aliases": ["shridhar", "pathak", "you", "your", "yours", "yourself", "he", "him", "his", "she", "her", "hers", "they", "them", "theirs"]
   },
-  "greeting": "Ask me anything.",
-  "subGreeting": "I'll answer out loud, the way I would in person.",
+  "greeting": "Welcome to Shridhar's voice avatar.",
+  "subGreeting": "Ask me anything you'd ask Shridhar.",
   "fallback": "That's not something I've covered yet. Ask me about my work at Moderna, my time at Alexa, Project Noesis, or my background.",
   "starters": [
     "Who are you?",
