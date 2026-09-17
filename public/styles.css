@@ -178,9 +178,49 @@ body {
 /* ---------------- idle hero: glowing ring + name ---------------- */
 
 .empty-state {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
   animation: rise 0.6s ease both;
+}
+
+/* A first-time visitor's eye goes to the big glowing ring, not the small
+   muted status line tucked under the mic button at the very bottom of the
+   screen — so the call to action lives right under the ring instead,
+   large and animated enough to actually get noticed. Only shown on the
+   untouched idle screen: gone the instant a question starts, same as the
+   ring itself, since .idle-cta is a sibling inside #empty-state and hides
+   with it. */
+.idle-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: rgba(77, 141, 255, 0.12);
+  border: 1px solid rgba(150, 160, 220, 0.22);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  animation: idle-cta-glow 2.4s ease-in-out infinite;
+}
+
+.idle-cta-key {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.idle-cta-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--dot-hot);
+  box-shadow: 0 0 0 0 rgba(205, 218, 255, 0.6);
+  animation: idle-cta-dot 2.4s ease-in-out infinite;
+  flex: none;
 }
 
 /* An authored `display` on the same element outranks the UA [hidden] rule
@@ -430,6 +470,18 @@ body {
   letter-spacing: 0.01em;
 }
 
+/* The untouched idle screen already says "tap to speak" once, prominently,
+   right under the ring (.idle-cta) — this would just be saying the same
+   thing again, smaller, right above the mic. Hidden only while that screen
+   is showing AND the line is still the plain default message — an error
+   (mic blocked, backend unreachable, didn't catch that) must stay visible
+   even on this screen, since nothing else on it says what went wrong.
+   Every other state (listening, thinking, speaking, "tap to ask another
+   question" after an answer) is unaffected either way. */
+.screen:has(#empty-state:not([hidden])) .status:not(.error) {
+  visibility: hidden;
+}
+
 .status.error {
   color: var(--danger);
 }
@@ -558,6 +610,28 @@ body[data-state="thinking"] .icon-btn.mic svg {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes idle-cta-glow {
+  0%,
+  100% {
+    background: rgba(77, 141, 255, 0.12);
+    border-color: rgba(150, 160, 220, 0.22);
+  }
+  50% {
+    background: rgba(77, 141, 255, 0.22);
+    border-color: rgba(168, 85, 247, 0.4);
+  }
+}
+
+@keyframes idle-cta-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(205, 218, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(205, 218, 255, 0);
   }
 }
 
