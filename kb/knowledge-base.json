@@ -10,12 +10,12 @@
   },
   "greeting": "Welcome to Shridhar's voice avatar.",
   "subGreeting": "Ask me anything you'd ask Shridhar.",
-  "fallback": "That's not something I've covered yet. Ask me about my work at Moderna, my time at Alexa, Project Noesis, or my background.",
+  "fallback": "That's not something I've covered yet. Ask me about my work at Moderna, my time at Alexa, Noesis, or my background.",
   "starters": [
     "Who are you?",
     "What do you do at Moderna?",
     "What's your background?",
-    "Tell me about Project Noesis"
+    "Tell me about Noesis"
   ],
   "entries": [
     {
@@ -57,7 +57,7 @@
       "question": "What are you working on right now?",
       "patterns": ["what are you working on", "what are you building", "current project", "what are you up to", "what is he working on", "latest project", "side project", "personal project"],
       "keywords": ["working", "building", "current", "currently", "now", "project", "projects", "latest", "lately", "side", "noesis", "moderna"],
-      "answer": "Day to day, I'm leading Moderna's generative AI roadmap. On the side, I'm teaching myself how to build and evaluate multi-agent systems through a personal project I call Noesis, I'm writing a book, and I built a loop engineering system that strips AI-sounding prose out of long-form text — which is also where the voice agent you're talking to right now came from.",
+      "answer": "Day to day, I'm leading Moderna's generative AI roadmap. Alongside that, I'm a tech advisor to Noesis, an enterprise agent workforce platform I started as a founder; I'm writing a book; and I built a loop engineering system that strips AI-sounding prose out of long-form text — which is also where the voice agent you're talking to right now came from.",
       "tags": ["projects"]
     },
     {
@@ -127,12 +127,12 @@
     },
     {
       "id": "kb-014",
-      "question": "What is Project Noesis?",
+      "question": "What is Noesis?",
       "patterns": ["what is project noesis", "tell me about noesis", "what is noesis", "what are you building with noesis", "tell me about your side project"],
-      "keywords": ["noesis", "learning", "personal", "project", "agent", "evaluation", "side"],
-      "answer": "Project Noesis is a personal learning project — my own attempt to understand how to build and evaluate multi-agent AI systems, separate from anything I do at Moderna. I'm working through the pieces a real agent platform would need: policy and guardrails as code, monitoring agents while they run, and benchmarking whether an agent is actually doing good work. It's how I stay hands-on with the technical side while my day job pulls me more into strategy.",
-      "detail": "A self-directed project to go deep on multi-agent systems outside of work. I'm building out the pieces of what a real agent orchestration platform needs: policy-as-code and runtime supervision so agent behavior can be monitored and controlled, the orchestration layer itself — tool use, function calling, memory, workflow chaining — and benchmarking models to actually measure whether an agent is reasoning well or just sounding confident.\n\nIt's deliberately separate from my Moderna role. The point isn't to build a company; it's to keep my hands on the technical problems underneath agentic AI while my day job increasingly involves strategy and organizational leadership.",
-      "tags": ["projects", "learning"]
+      "keywords": ["noesis", "venture", "startup", "founder", "advisor", "advise", "platform", "workforce", "agent", "agents", "governance", "evaluation", "side"],
+      "answer": "Noesis is an enterprise agent workforce platform — a management layer that treats AI agents as a managed digital workforce, with policy-as-code and runtime supervision so you can monitor agents, step in, and stay compliant while they run. I started it as a founder; now I'm its tech advisor, because my full-time focus is my role at Moderna. So far that's meant more than fifty enterprise discovery calls, three design-partner pilots, and a seed-stage pricing model validated within six months.",
+      "detail": "Noesis is a workforce management layer for enterprise-scale AI agents. The core idea is Policy-as-Code and runtime supervision for LLM-driven multi-agent systems: real-time monitoring, intervention, and compliance built into agent orchestration, instead of guessing at a black box.\n\nI started Noesis as a founder and did the early work myself: technical architecture and MVP development, more than fifty enterprise discovery calls, three design-partner pilots, and validating a seed-stage pricing model within six months.\n\nToday I'm a tech advisor rather than running it day to day, because my full-time focus is leading AI and ML at Moderna. The problems it works on, governing and supervising agents in production, are the same ones I deal with in a regulated enterprise, so the two inform each other.",
+      "tags": ["projects", "venture", "noesis"]
     },
     {
       "id": "kb-015",
@@ -271,6 +271,22 @@
       "keywords": ["hire", "hiring", "hires", "candidate", "candidates", "interview", "interviews", "recruit", "recruiting", "philosophy", "team"],
       "answer": "I look for solid basics in whatever the role actually needs, real problem-solving ability, and someone who's genuinely fun to work with. What matters most is believing that new challenges are coming and trusting we'll solve them together as a team, rather than expecting someone who's already seen it all. I've done a lot of this — more than five hundred interviews at Amazon alone.",
       "tags": ["work", "leadership", "hiring"]
+    },
+    {
+      "id": "kb-031",
+      "question": "How do you approach mentoring junior engineers?",
+      "patterns": ["how do you mentor", "how do you approach mentoring", "mentoring junior engineers", "mentor junior engineers", "how do you mentor people", "your approach to mentoring", "how do you develop engineers", "how do you grow your team", "how do you coach"],
+      "keywords": ["mentor", "mentoring", "mentorship", "junior", "coach", "coaching", "grow", "growth", "develop", "career", "engineers"],
+      "answer": "I start by finding out what actually interests them and where they want to grow — their goals, not the ones I'd pick for them. Then we build a plan together, with concrete steps they own. And I connect them with people who've already done what they're trying to do, because someone who's walked that exact path can shortcut things in a way I can't always.",
+      "tags": ["work", "leadership", "mentoring"]
+    },
+    {
+      "id": "kb-032",
+      "question": "What's your weakness?",
+      "patterns": ["what is your weakness", "what's your weakness", "what are your weaknesses", "your biggest weakness", "greatest weakness", "what are you bad at", "what do you struggle with", "what would you improve about yourself", "area of improvement"],
+      "keywords": ["weakness", "weaknesses", "weak", "struggle", "improve", "improvement", "flaw", "shortcoming", "bad"],
+      "answer": "I tend to go too horizontal. I'm drawn to working across a lot of threads at once, and switching context quickly is honestly one of my strengths. The flip side is that the same habit can interrupt work that needs long, undivided attention — the deep, heads-down problems don't always get the uninterrupted time they deserve.",
+      "tags": ["personal", "leadership"]
     }
   ]
 }

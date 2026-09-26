@@ -12,18 +12,22 @@ it here when it's identified, check it off once it's answered and live.
       real example, replace the `answer` (and add a `detail`) rather than
       adding a second entry.
 - [ ] What is your favorite book, and why? — asked 2× in production, no
-      answer yet. (Also sent as a fillable Word doc: `kb-gaps-to-fill.docx`.)
-- [ ] What is your approach to hiring and building teams? — asked 2×,
-      including phrased as "what do you look for when hiring a data
-      scientist."
-- [ ] How do you approach mentoring junior engineers? — asked 1×.
+      answer yet. Right now it falls through to kb-011 (hobbies / writing a
+      book) at 0.50 confidence, so the agent answers the wrong question. (Also sent as a fillable Word doc: `kb-gaps-to-fill.docx`.)
 - [ ] How do you evaluate a new AI vendor or tool before adopting it? —
       asked 1×.
-- [ ] What's your weakness? — asked 1×, the classic interview question.
-      Wants a genuine, specific weakness, not a disguised strength.
 
 ## Done
 
+- [x] What is your approach to hiring and building teams? — covered by
+      kb-030 (hiring philosophy), including the "hiring a data scientist"
+      phrasing.
+- [x] How do you approach mentoring junior engineers? (kb-031) — added
+      2026-09-26.
+- [x] What's your weakness? (kb-032) — added 2026-09-26.
+- [x] Noesis described consistently (kb-005, kb-014) — was "a personal
+      learning project"; now the venture Shridhar started as a founder and
+      advises as Tech Advisor, matching profile.json. Fixed 2026-09-26.
 - [x] How do you handle team conflict? (kb-028) — added 2026-09-13 as a
       general-philosophy answer (no specific story yet, see above).
 
